@@ -1,20 +1,77 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# spfx-project
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+## Summary
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+Short summary on functionality and used technologies.
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+[picture of the solution in action, if possible]
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+## Used SharePoint Framework Version
+
+![version](https://img.shields.io/badge/version-1.22.2-green.svg)
+
+## Applies to
+
+- [SharePoint Framework](https://aka.ms/spfx)
+- [Microsoft 365 tenant](https://docs.microsoft.com/sharepoint/dev/spfx/set-up-your-developer-tenant)
+
+> Get your own free development tenant by subscribing to [Microsoft 365 developer program](http://aka.ms/o365devprogram)
+
+## Prerequisites
+
+> Any special pre-requisites?
+
+## Solution
+
+| Solution    | Author(s)                                               |
+| ----------- | ------------------------------------------------------- |
+| folder name | Author details (name, company, twitter alias with link) |
+
+## Version history
+
+| Version | Date             | Comments        |
+| ------- | ---------------- | --------------- |
+| 1.1     | March 10, 2021   | Update comment  |
+| 1.0     | January 29, 2021 | Initial release |
+
+## Disclaimer
+
+**THIS CODE IS PROVIDED _AS IS_ WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING ANY IMPLIED WARRANTIES OF FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.**
+
+---
+
+## Minimal Path to Awesome
+
+- Clone this repository
+- Ensure that you are at the solution folder
+- in the command-line run:
+  - `npm install -g @rushstack/heft`
+  - `npm install`
+  - `heft start`
+
+> Include any additional steps as needed.
+
+Other build commands can be listed using `heft --help`.
+
+## Features
+
+Description of the extension that expands upon high-level summary above.
+
+This extension illustrates the following concepts:
+
+- topic 1
+- topic 2
+- topic 3
+
+> Notice that better pictures and documentation will increase the sample usage and the value you are providing for others. Thanks for your submissions advance.
+
+> Share your web part with others through Microsoft 365 Patterns and Practices program to get visibility and exposure. More details on the community, open-source projects and other activities from http://aka.ms/m365pnp.
+
+## References
+
+- [Getting started with SharePoint Framework](https://docs.microsoft.com/sharepoint/dev/spfx/set-up-your-developer-tenant)
+- [Building for Microsoft teams](https://docs.microsoft.com/sharepoint/dev/spfx/build-for-teams-overview)
+- [Use Microsoft Graph in your solution](https://docs.microsoft.com/sharepoint/dev/spfx/web-parts/get-started/using-microsoft-graph-apis)
+- [Publish SharePoint Framework applications to the Marketplace](https://docs.microsoft.com/sharepoint/dev/spfx/publish-to-marketplace-overview)
+- [Microsoft 365 Patterns and Practices](https://aka.ms/m365pnp) - Guidance, tooling, samples and open-source controls for your Microsoft 365 development
+- [Heft Documentation](https://heft.rushstack.io/)
