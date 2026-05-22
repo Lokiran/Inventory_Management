@@ -28,26 +28,41 @@ ChartJS.register(
 export interface IDashboardProps {
   items: IInventoryItem[];
   requests: IRequest[];
+  isAdmin?: boolean;
+  /** When true, dashboard copy and the primary pie chart follow the Approvals queue (requests), not inventory asset status. */
+  isInventoryManager?: boolean;
 }
 
 export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
-  const { items, requests } = props;
+  const { items, requests, isAdmin, isInventoryManager } = props;
+  const isManagerView = !!isInventoryManager && !isAdmin;
 
   // --- Data Processing for Charts ---
 
-  // 1. Asset Status Distribution (Pie Chart)
-  const statusCounts = items.reduce((acc, item) => {
-    const status = item.status || 'Unknown';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  // 1. Primary pie: Admin / Employee = asset status from inventory; Inventory Manager = request status from Approvals queue (same fields as Approvals tab)
+  const statusCounts = isManagerView
+    ? requests.reduce((acc, req) => {
+        const status = req.status || 'Pending';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    : items.reduce((acc, item) => {
+        const status = item.status || 'Unknown';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+  const primaryPieLabel = isManagerView ? 'Requests in approval queue' : 'Assets by Status';
+  const primaryPieTitle = isManagerView ? 'Approvals queue by request status' : 'Asset Status Distribution';
 
   const assetStatusData = {
-    labels: Object.keys(statusCounts),
+    labels: Object.keys(statusCounts).length ? Object.keys(statusCounts) : ['No data'],
     datasets: [
       {
-        label: 'Assets by Status',
-        data: Object.keys(statusCounts).map(k => statusCounts[k]),
+        label: primaryPieLabel,
+        data: Object.keys(statusCounts).length
+          ? Object.keys(statusCounts).map(k => statusCounts[k])
+          : [1],
         backgroundColor: [
           'rgba(54, 162, 235, 0.6)',
           'rgba(255, 206, 86, 0.6)',
@@ -102,19 +117,36 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
     },
   };
 
-  // 3. Request Status Overview (Doughnut Chart)
-  const requestStatusCounts = requests.reduce((acc, req) => {
-    const status = req.status || 'Pending';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  // 3. Doughnut: Admin = asset assignment status; Manager = fulfillment after manager approval (assetStatus); Employee = request status
+  const requestStatusCounts = isManagerView
+    ? requests
+        .filter(req => (req.status || '').toLowerCase() === 'approved')
+        .reduce((acc, req) => {
+          const status = req.assetStatus || 'Pending';
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+    : requests.reduce((acc, req) => {
+        const status = isAdmin ? (req.assetStatus || 'Pending') : (req.status || 'Pending');
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+  const doughnutLabels = Object.keys(requestStatusCounts).length
+    ? Object.keys(requestStatusCounts)
+    : isManagerView
+      ? ['No manager-approved requests yet']
+      : ['No data'];
+  const doughnutDataValues = Object.keys(requestStatusCounts).length
+    ? Object.keys(requestStatusCounts).map(k => requestStatusCounts[k])
+    : [1];
 
   const requestStatusData = {
-    labels: Object.keys(requestStatusCounts),
+    labels: doughnutLabels,
     datasets: [
       {
-        label: 'Requests by Status',
-        data: Object.keys(requestStatusCounts).map(k => requestStatusCounts[k]),
+        label: isManagerView ? 'Assignment status (approved requests)' : 'Requests by Status',
+        data: doughnutDataValues,
         backgroundColor: [
           'rgba(255, 206, 86, 0.6)', // Pending
           'rgba(75, 192, 192, 0.6)', // Approved
@@ -135,11 +167,28 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
   // --- Quick Summaries ---
   const totalAssets = items.length;
   const totalRequests = requests.length;
-  const pendingRequests = requests.filter(r => r.status === 'Pending').length;
-  const availableAssets = items.filter(i => i.status === 'In Stock').length;
+  const pendingRequests = requests.filter(r => {
+    const status = isAdmin ? (r.assetStatus || 'Pending') : (r.status || 'Pending');
+    return status === 'Pending';
+  }).length;
+  const availableAssets = items.filter(i => i.status === 'In Stock' || i.status === 'Yes').length;
+  const awaitingManagerDecision = isManagerView
+    ? requests.filter(r => (r.status || '').toLowerCase() === 'pending').length
+    : 0;
 
   return (
     <div className={styles.dashboard}>
+      {isManagerView && (
+        <p className={`${styles.dashboardIntro} ${styles.dashboardIntroManager}`}>
+          <strong>Inventory Manager dashboard</strong> — KPIs and the first chart use the same request list as the{' '}
+          <strong>Approvals</strong> tab (full queue, not search-filtered). Administrators see a separate dashboard focused on inventory and assignment.
+        </p>
+      )}
+      {isAdmin && (
+        <p className={`${styles.dashboardIntro} ${styles.dashboardIntroAdmin}`}>
+          <strong>Administrator dashboard</strong> — Asset analytics come from inventory records; request metrics reflect the assignment queue (admin-approved requests).
+        </p>
+      )}
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
           <div className={styles.summaryValue}>{totalAssets}</div>
@@ -151,17 +200,19 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
         </div>
         <div className={styles.summaryCard}>
           <div className={styles.summaryValue}>{totalRequests}</div>
-          <div className={styles.summaryLabel}>Total Requests</div>
+          <div className={styles.summaryLabel}>{isManagerView ? 'Requests in queue' : 'Total Requests'}</div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryValue}>{pendingRequests}</div>
-          <div className={styles.summaryLabel}>Pending Requests</div>
+          <div className={styles.summaryValue}>{isManagerView ? awaitingManagerDecision : pendingRequests}</div>
+          <div className={styles.summaryLabel}>
+            {isManagerView ? 'Awaiting manager approval' : 'Pending Requests'}
+          </div>
         </div>
       </div>
 
       <div className={styles.chartsGrid}>
         <div className={styles.chartCard}>
-          <h3>Asset Status Distribution</h3>
+          <h3>{primaryPieTitle}</h3>
           <div className={styles.chartContainer}>
             <Pie data={assetStatusData} options={{ maintainAspectRatio: false }} />
           </div>
@@ -173,7 +224,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
           </div>
         </div>
         <div className={styles.chartCard}>
-          <h3>Request Status</h3>
+          <h3>{isManagerView ? 'After approval: asset assignment status' : 'Request Status'}</h3>
           <div className={styles.chartContainer}>
             <Doughnut data={requestStatusData} options={{ maintainAspectRatio: false }} />
           </div>

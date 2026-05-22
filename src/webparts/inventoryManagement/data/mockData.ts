@@ -2,11 +2,10 @@ import { IEmployee } from '../models/IEmployee';
 import { IInventoryItem } from '../models/IInventoryItem';
 
 export const EMPLOYEES: IEmployee[] = [
-  { id: 'E1', name: 'John Doe', email: 'john.doe@example.com', department: 'IT', jobTitle: 'Software Engineer' },
-  { id: 'E2', name: 'Jane Smith', email: 'jane.smith@example.com', department: 'HR', jobTitle: 'HR Manager' },
-  { id: 'E3', name: 'Bob Johnson', email: 'bob.johnson@example.com', department: 'Finance', jobTitle: 'Accountant' },
-  { id: 'E4', name: 'Alice Williams', email: 'alice.williams@example.com', department: 'Marketing', jobTitle: 'Marketing Specialist' },
-  { id: 'E5', name: 'Charlie Brown', email: 'charlie.brown@example.com', department: 'IT', jobTitle: 'Network Admin' },
+  { id: 'E1', name: 'Loka Kiran Reddy', email: 'Kiran.Reddy@3bh3kf.onmicrosoft.com', department: 'IT', jobTitle: 'Admin' },
+  { id: 'E2', name: 'Adele Vance', email: 'AdeleV@3bh3kf.onmicrosoft.com', department: 'Operations', jobTitle: 'Inventory Employee' },
+  { id: 'E3', name: 'Alex Wilber', email: 'AlexW@3bh3kf.onmicrosoft.com', department: 'Operations', jobTitle: 'Inventory Employee' },
+  { id: 'E4', name: 'Diego Siciliani', email: 'DiegoS@3bh3kf.onmicrosoft.com', department: 'Management', jobTitle: 'Inventory Manager' }
 ];
 
 

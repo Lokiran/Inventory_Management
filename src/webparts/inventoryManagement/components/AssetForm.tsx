@@ -1,16 +1,19 @@
 import * as React from 'react';
-import { 
-  Panel, 
-  PanelType, 
-  TextField, 
-  Dropdown, 
-  IDropdownOption, 
-  PrimaryButton, 
+import {
+  Panel,
+  PanelType,
+  TextField,
+  Dropdown,
+  IDropdownOption,
+  PrimaryButton,
   DefaultButton,
   Stack,
-  IStackTokens
+  IStackTokens,
+  MessageBar,
+  MessageBarType
 } from '@fluentui/react';
 import { IInventoryItem } from '../models/IInventoryItem';
+import { RoleUtils, UserRole } from '../utils/RoleUtils';
 
 const assetTypeOptions: IDropdownOption[] = [
   { key: 'Laptop', text: 'Laptop' },
@@ -24,6 +27,7 @@ const assetTypeOptions: IDropdownOption[] = [
 export interface IAssetFormProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUserRole: UserRole;
   onAddAsset: (asset: Omit<IInventoryItem, 'id' | 'status' | 'assignedTo'>) => void;
 }
 
@@ -34,6 +38,14 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
   const [assetType, setAssetType] = React.useState<string>('Laptop');
   const [serialNumber, setSerialNumber] = React.useState('');
   const [purchaseDate, setPurchaseDate] = React.useState(new Date().toISOString().split('T')[0]);
+  const [note, setNote] = React.useState('');
+
+  const isAdmin = props.currentUserRole === 'Admin';
+  const isManager = props.currentUserRole === 'Inventory Manager';
+
+  if (!RoleUtils.canAddAssets(props.currentUserRole)) {
+    return null;
+  }
 
   const onSave = () => {
     props.onAddAsset({
@@ -41,10 +53,12 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
       assetName,
       assetType,
       serialNumber,
-      purchaseDate
+      purchaseDate,
+      note
     });
     setAssetName('');
     setSerialNumber('');
+    setNote('');
     props.onClose();
   };
 
@@ -53,21 +67,26 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
       isOpen={props.isOpen}
       onDismiss={props.onClose}
       type={PanelType.medium}
-      headerText="Add New Asset"
+      headerText={isAdmin ? "Add New Asset" : "Register New Asset"}
       closeButtonAriaLabel="Close"
     >
       <Stack tokens={stackTokens}>
-        <TextField 
-          label="Title (Group/Category)" 
-          value={title} 
-          onChange={(_, val) => setTitle(val || '')} 
-          required 
+        {isManager && !isAdmin && (
+          <MessageBar messageBarType={MessageBarType.warning}>
+            You are registering a new asset. After adding, you can assign it to employees in the Asset Tracking section.
+          </MessageBar>
+        )}
+        <TextField
+          label="Title (Group/Category)"
+          value={title}
+          onChange={(_, val) => setTitle(val || '')}
+          required
         />
-        <TextField 
-          label="Asset Name" 
-          value={assetName} 
-          onChange={(_, val) => setAssetName(val || '')} 
-          required 
+        <TextField
+          label="Asset Name"
+          value={assetName}
+          onChange={(_, val) => setAssetName(val || '')}
+          required
         />
         <Dropdown
           label="Asset Type"
@@ -76,18 +95,25 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
           onChange={(_, opt) => setAssetType(opt?.key as string || 'Other')}
           required
         />
-        <TextField 
-          label="Serial Number" 
-          value={serialNumber} 
-          onChange={(_, val) => setSerialNumber(val || '')} 
-          required 
+        <TextField
+          label="Serial Number"
+          value={serialNumber}
+          onChange={(_, val) => setSerialNumber(val || '')}
+          required
         />
-        <TextField 
-          label="Purchase Date" 
+        <TextField
+          label="Purchase Date"
           type="date"
-          value={purchaseDate} 
-          onChange={(_, val) => setPurchaseDate(val || '')} 
-          required 
+          value={purchaseDate}
+          onChange={(_, val) => setPurchaseDate(val || '')}
+          required
+        />
+        <TextField
+          label={isAdmin ? "Notes (Employee details, etc.)" : "Notes"}
+          multiline
+          rows={3}
+          value={note}
+          onChange={(_, val) => setNote(val || '')}
         />
         <Stack horizontal tokens={stackTokens} style={{ marginTop: 20 }}>
           <PrimaryButton text="Add Asset" onClick={onSave} disabled={!assetName || !serialNumber} />

@@ -10,12 +10,8 @@ import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 import * as strings from 'InventoryManagementWebPartStrings';
 import InventoryManagement from './components/InventoryManagement';
-import { IInventoryManagementProps } from './components/IInventoryManagementProps';
-import { spfi, SPFx, SPFI } from '@pnp/sp';
-import "@pnp/sp/webs";
-import "@pnp/sp/lists";
-import "@pnp/sp/items";
-import "@pnp/sp/batching";
+import { IInventoryManagementProps } from './models/IInventoryManagementProps';
+import { getSP } from './pnpjsConfig';
 
 
 export interface IInventoryManagementWebPartProps {
@@ -26,7 +22,6 @@ export default class InventoryManagementWebPart extends BaseClientSideWebPart<II
 
   private _isDarkTheme: boolean = false;
   private _environmentMessage: string = '';
-  private _sp!: SPFI;
 
   public render(): void {
     const element: React.ReactElement<IInventoryManagementProps> = React.createElement(
@@ -37,7 +32,7 @@ export default class InventoryManagementWebPart extends BaseClientSideWebPart<II
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
         userDisplayName: this.context.pageContext.user.displayName,
-        sp: this._sp
+        userEmail: this.context.pageContext.user.email
       }
     );
 
@@ -45,7 +40,7 @@ export default class InventoryManagementWebPart extends BaseClientSideWebPart<II
   }
 
   protected onInit(): Promise<void> {
-    this._sp = spfi().using(SPFx(this.context));
+    getSP(this.context);
     return this._getEnvironmentMessage().then(message => {
       this._environmentMessage = message;
     });

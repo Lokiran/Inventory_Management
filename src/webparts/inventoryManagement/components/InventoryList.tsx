@@ -4,11 +4,13 @@ import {
   DetailsList, 
   DetailsListLayoutMode, 
   SelectionMode, 
-  IColumn 
+  IColumn,
+  IGroup
 } from '@fluentui/react/lib/DetailsList';
 
 export interface IInventoryListProps {
   items: IInventoryItem[];
+  isAdmin?: boolean;
 }
 
 export const InventoryList: React.FC<IInventoryListProps> = (props) => {
@@ -47,13 +49,63 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
       }
     },
     { key: 'column8', name: 'Assigned To', fieldName: 'assignedTo', minWidth: 100, maxWidth: 150, isResizable: true },
+    { key: 'column9', name: 'Note', fieldName: 'note', minWidth: 150, maxWidth: 300, isResizable: true },
   ];
+
+  // Grouping Logic for Admins
+  let items = props.items;
+  let groups: IGroup[] | undefined = undefined;
+
+  if (props.isAdmin && items.length > 0) {
+    const normalizeGroupTitle = (title: string | undefined): string => {
+      const t = (title || 'Uncategorized').trim();
+      if (/^company\s*assets?$/i.test(t)) return 'Company Assets';
+      if (/^leased\s*assets?$/i.test(t)) return 'Leased Assets';
+      return t;
+    };
+
+    // Sort items by normalized title to ensure correct grouping
+    items = [...props.items].sort((a, b) => 
+      normalizeGroupTitle(a.title).localeCompare(normalizeGroupTitle(b.title))
+    );
+    
+    groups = [];
+    let currentGroupName = normalizeGroupTitle(items[0].title);
+    let currentGroupStartIndex = 0;
+
+    items.forEach((item, index) => {
+      const itemGroup = normalizeGroupTitle(item.title);
+      if (itemGroup !== currentGroupName) {
+        groups!.push({
+          key: currentGroupName,
+          name: currentGroupName,
+          startIndex: currentGroupStartIndex,
+          count: index - currentGroupStartIndex,
+          isCollapsed: false,
+        });
+        currentGroupName = itemGroup;
+        currentGroupStartIndex = index;
+      }
+    });
+
+    // Add the last group
+    if (items.length > 0) {
+      groups!.push({
+        key: currentGroupName,
+        name: currentGroupName,
+        startIndex: currentGroupStartIndex,
+        count: items.length - currentGroupStartIndex,
+        isCollapsed: false,
+      });
+    }
+  }
 
   return (
     <div style={{ marginTop: '10px' }}>
       <DetailsList
-        items={props.items}
+        items={items}
         columns={columns}
+        groups={groups}
         setKey="set"
         layoutMode={DetailsListLayoutMode.justified}
         selectionMode={SelectionMode.none}

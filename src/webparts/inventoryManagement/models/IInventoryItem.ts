@@ -7,4 +7,7 @@ export interface IInventoryItem {
   purchaseDate: string;
   status: string;
   assignedTo?: string;
+  assignedDate?: string;
+  warrantyExpiry?: string;
+  note?: string;
 }
