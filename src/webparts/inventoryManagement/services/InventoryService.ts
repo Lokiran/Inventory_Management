@@ -136,8 +136,12 @@ export class InventoryService {
       try {
         items = await sp.web.lists.getByTitle(InventoryService.LIST_NAME).items.select("*, AssignedTo/Title").expand("AssignedTo")();
       } catch (expandError) {
-        // Fallback for when AssignedTo is just a plain Text column (cannot be expanded)
-        items = await sp.web.lists.getByTitle(InventoryService.LIST_NAME).items();
+        try {
+          items = await sp.web.lists.getByTitle(InventoryService.LIST_NAME).items.select("*, Assigned_x0020_To/Title").expand("Assigned_x0020_To")();
+        } catch (expandError2) {
+          // Fallback for when AssignedTo is just a plain Text column (cannot be expanded)
+          items = await sp.web.lists.getByTitle(InventoryService.LIST_NAME).items();
+        }
       }
 
       return items.map((item: any) => ({
@@ -148,7 +152,13 @@ export class InventoryService {
         serialNumber: item.SerialNumber || item.Serial_x0020_Number || "",
         purchaseDate: item.PurchaseDate || item.Purchase_x0020_Date || "",
         status: item.Status || item.AssetStatus || "",
-        assignedTo: typeof item.AssignedTo === 'string' ? item.AssignedTo : (item.AssignedTo?.Title || ""),
+        assignedTo: (() => {
+          const assignedField = item.AssignedTo || item.Assigned_x0020_To;
+          if (!assignedField) return "";
+          if (typeof assignedField === 'string') return assignedField;
+          if (Array.isArray(assignedField)) return assignedField.map((a: any) => a.Title).join(', ');
+          return assignedField.Title || "";
+        })(),
         assignedDate: item.Modified || "",
         warrantyExpiry: item.WarrantyExpiry || item.Warranty_x0020_Expiry || "",
         note: item.Note || item.Notes || ""
@@ -605,11 +615,17 @@ export class InventoryService {
       const baseStatus = { Status: 'Assigned' };
       
       if (assignedToId !== null) {
+        payloadsToTry.push({ ...baseStatus, AssignedToId: { results: [assignedToId] }, Note: `Assigned to: ${employeeName}` });
+        payloadsToTry.push({ ...baseStatus, Assigned_x0020_ToId: { results: [assignedToId] }, Note: `Assigned to: ${employeeName}` });
         payloadsToTry.push({ ...baseStatus, AssignedToId: assignedToId, Note: `Assigned to: ${employeeName}` });
+        payloadsToTry.push({ ...baseStatus, Assigned_x0020_ToId: assignedToId, Note: `Assigned to: ${employeeName}` });
         payloadsToTry.push({ ...baseStatus, AssignedToId: assignedToId });
+        payloadsToTry.push({ ...baseStatus, Assigned_x0020_ToId: assignedToId });
       } else {
         payloadsToTry.push({ ...baseStatus, AssignedTo: employeeName, Note: `Assigned to: ${employeeName}` });
+        payloadsToTry.push({ ...baseStatus, Assigned_x0020_To: employeeName, Note: `Assigned to: ${employeeName}` });
         payloadsToTry.push({ ...baseStatus, AssignedTo: employeeName });
+        payloadsToTry.push({ ...baseStatus, Assigned_x0020_To: employeeName });
       }
       
       payloadsToTry.push({ ...baseStatus, Note: `Assigned to: ${employeeName}` });

@@ -68,6 +68,18 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     return requestOwner === activeUser || requestOwner.includes(activeUser) || activeUser.includes(requestOwner);
   };
 
+  private _isAssetAssignedToCurrentUser = (item: IInventoryItem, currentUser: string): boolean => {
+    const normalize = (value: string | undefined): string => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const activeUser = normalize(currentUser);
+    if (!activeUser) return false;
+
+    const assignedNorm = normalize(item.assignedTo);
+    const isAssigned = assignedNorm && (assignedNorm === activeUser || assignedNorm.includes(activeUser) || activeUser.includes(assignedNorm));
+    const isNoted = (item.note || '').toLowerCase().includes('assigned to:') && normalize(item.note).includes(activeUser);
+    
+    return !!(isAssigned || isNoted);
+  };
+
   constructor(props: IInventoryManagementProps) {
     super(props);
     this.state = {
@@ -323,7 +335,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     const isManager = effectiveRole === 'Inventory Manager';
     const isEmployee = effectiveRole === 'Inventory Employee';
 
-    const myAssets = items.filter(item => (item.assignedTo || '').toLowerCase() === userDisplayName.toLowerCase());
+    const myAssets = items.filter(item => this._isAssetAssignedToCurrentUser(item, userDisplayName || ''));
     
     const myRequests = this.state.requests.filter(request => this._isRequestOwnedByCurrentUser(request.requesterName || '', userDisplayName || ''));
     const myApprovedRequests = myRequests.filter(request => (request.status || '').toLowerCase().includes('approv'));
@@ -669,7 +681,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     </p>
                     <AssetTracking
                       items={items}
-                      employees={EMPLOYEES}
+                      employees={EMPLOYEES.map(emp => emp.role === 'Admin' ? { ...emp, name: this.props.userDisplayName, email: this.props.userEmail } : emp)}
                       currentUserRole={effectiveRole}
                       onAssignAssets={this._onAssignAssets}
                       isActionInProgress={!!this.state.isTrackingActionInProgress}
