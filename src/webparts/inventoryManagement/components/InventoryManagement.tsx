@@ -76,8 +76,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     const assignedNorm = normalize(item.assignedTo);
     const isAssigned = assignedNorm && (assignedNorm === activeUser || assignedNorm.includes(activeUser) || activeUser.includes(assignedNorm));
     const isNoted = (item.note || '').toLowerCase().includes('assigned to:') && normalize(item.note).includes(activeUser);
+    const isStatus = (item.status || '').toLowerCase().includes('assigned to:') && normalize(item.status).includes(activeUser);
     
-    return !!(isAssigned || isNoted);
+    return !!(isAssigned || isNoted || isStatus);
   };
 
   constructor(props: IInventoryManagementProps) {
@@ -681,8 +682,10 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     </p>
                     <AssetTracking
                       items={items}
-                      employees={EMPLOYEES.map(emp => emp.role === 'Admin' ? { ...emp, name: this.props.userDisplayName, email: this.props.userEmail } : emp)}
+                      employees={EMPLOYEES}
                       currentUserRole={effectiveRole}
+                      currentUserName={this.props.userDisplayName}
+                      currentUserEmail={this.props.userEmail}
                       onAssignAssets={this._onAssignAssets}
                       isActionInProgress={!!this.state.isTrackingActionInProgress}
                     />

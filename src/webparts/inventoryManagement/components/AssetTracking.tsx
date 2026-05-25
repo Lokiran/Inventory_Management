@@ -19,6 +19,8 @@ export interface IAssetTrackingProps {
   items: IInventoryItem[];
   employees: IEmployee[];
   currentUserRole: UserRole;
+  currentUserName?: string;
+  currentUserEmail?: string;
   onAssignAssets: (employeeName: string, employeeEmail: string, assetIds: string[]) => Promise<void>;
   isActionInProgress: boolean;
 }
@@ -37,7 +39,19 @@ export const AssetTracking: React.FC<IAssetTrackingProps> = (props) => {
     );
   }
 
-  const employeeOptions: IDropdownOption[] = props.employees.map(emp => ({
+  // Patch the Admin employee with the REAL user's email and name so that SharePoint's ensureUser works correctly
+  const patchedEmployees = props.employees.map(emp => {
+    if (emp.jobTitle === 'Admin') {
+      return {
+        ...emp,
+        name: props.currentUserName || emp.name,
+        email: props.currentUserEmail || emp.email
+      };
+    }
+    return emp;
+  });
+
+  const employeeOptions: IDropdownOption[] = patchedEmployees.map(emp => ({
     key: emp.id,
     text: `${emp.name} (${emp.department})`
   }));
@@ -48,7 +62,7 @@ export const AssetTracking: React.FC<IAssetTrackingProps> = (props) => {
     text: `${asset.assetName || asset.title} (${asset.serialNumber || 'N/A'}) - ${asset.assetType || 'Unknown'}`
   }));
 
-  const selectedEmployee = props.employees.find(e => e.id === selectedEmployeeId);
+  const selectedEmployee = patchedEmployees.find(e => e.id === selectedEmployeeId);
   const normalize = (val: string | undefined) => (val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const employeeAssignedAssets = props.items.filter(i => {
     if (!selectedEmployee) return false;
@@ -56,7 +70,8 @@ export const AssetTracking: React.FC<IAssetTrackingProps> = (props) => {
     const assignedNorm = normalize(i.assignedTo);
     const isAssigned = assignedNorm && (assignedNorm === nameNorm || assignedNorm.includes(nameNorm) || nameNorm.includes(assignedNorm));
     const isNoted = (i.note || '').toLowerCase().includes('assigned to:') && normalize(i.note).includes(nameNorm);
-    return isAssigned || isNoted;
+    const isStatus = (i.status || '').toLowerCase().includes('assigned to:') && normalize(i.status).includes(nameNorm);
+    return isAssigned || isNoted || isStatus;
   });
 
   const handleAssign = async () => {

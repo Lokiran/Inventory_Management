@@ -629,15 +629,19 @@ export class InventoryService {
       }
       
       payloadsToTry.push({ ...baseStatus, Note: `Assigned to: ${employeeName}` });
+      payloadsToTry.push({ ...baseStatus, Notes: `Assigned to: ${employeeName}` });
+      payloadsToTry.push({ Status: `Assigned to: ${employeeName}`, AssetStatus: `Assigned to: ${employeeName}` }); // Fallback to Status column
       payloadsToTry.push({ ...baseStatus });
 
       let success = false;
       let lastErr: any;
+      let successfulPayload: any = null;
 
       for (const payload of payloadsToTry) {
         try {
           await list.items.getById(parseInt(assetId)).update(payload);
           success = true;
+          successfulPayload = payload;
           break; // Stop trying if one succeeds
         } catch (err) {
           lastErr = err;
