@@ -602,6 +602,17 @@ export class InventoryService {
     const list = sp.web.lists.getByTitle(InventoryService.LIST_NAME);
     let assignedToId: number | null = null;
     
+    // Ensure 'Note' column exists to guarantee we have a place to save the Assignee
+    try {
+      const fields = await list.fields();
+      if (!fields.some((f: any) => f.InternalName === 'Note')) {
+        await list.fields.addMultilineText('Note', { NumberOfLines: 6, RichText: false });
+        console.log("Automatically created 'Note' column in SharePoint list.");
+      }
+    } catch (e) {
+      console.warn("Failed to check or create Note column", e);
+    }
+
     // Try to resolve the user in SharePoint by email
     try {
       const user: any = await sp.web.ensureUser(employeeEmail);
