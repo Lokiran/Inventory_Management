@@ -1,0 +1,27 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "inventory-management-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/inventoryManagement/InventoryManagementWebPart.js",
+          "manifest": "./src/webparts/inventoryManagement/InventoryManagementWebPart.manifest.json"
+        }
+      ]
+    },
+    "employee-management-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/employeeManagement/EmployeeManagementWebPart.js",
+          "manifest": "./src/webparts/employeeManagement/EmployeeManagementWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "InventoryManagementWebPartStrings": "lib/webparts/inventoryManagement/loc/{locale}.js",
+    "EmployeeManagementWebPartStrings": "lib/webparts/employeeManagement/loc/{locale}.js"
+  }
+}
