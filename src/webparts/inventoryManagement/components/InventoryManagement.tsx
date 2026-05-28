@@ -11,7 +11,7 @@ import { getSP } from '../pnpjsConfig';
 import { AssetForm } from './AssetForm';
 import { RequestForm } from './RequestForm';
 import { EventStream } from './EventStream';
-import { PrimaryButton, Pivot, PivotItem, TextField, DetailsList, DetailsListLayoutMode, SelectionMode, IColumn } from '@fluentui/react';
+import { PrimaryButton, Pivot, PivotItem, TextField, DetailsList, DetailsListLayoutMode, SelectionMode, IColumn, DetailsRow } from '@fluentui/react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -55,6 +55,7 @@ export interface IInventoryManagementState {
   auditLogsLoading: boolean;
   errorMessage?: string;
   isTrackingActionInProgress?: boolean;
+  expandedUserEmail?: string;
 }
 
 export default class InventoryManagement extends React.Component<IInventoryManagementProps, IInventoryManagementState> {
@@ -634,10 +635,17 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     <h4 style={{ marginBottom: '15px' }}>Employee Directory & Asset Ownership</h4>
                     <div style={{ backgroundColor: 'var(--surface-color, #ffffff)', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                       <DetailsList
-                        items={EMPLOYEES.map(emp => ({
-                          ...emp,
-                          assignedAssets: items.filter(i => (i.assignedTo || '').toLowerCase() === emp.name.toLowerCase()).length
-                        }))}
+                        items={EMPLOYEES.map(emp => {
+                          const realName = emp.jobTitle === 'Admin' ? (this.props.userDisplayName || emp.name) : emp.name;
+                          const assignedItems = items.filter(i => this._isAssetAssignedToCurrentUser(i, realName));
+                          const assetTypes = Array.from(new Set(assignedItems.map(a => a.assetType))).filter(t => t).join(', ');
+                          return {
+                            ...emp,
+                            assignedAssets: assignedItems.length,
+                            assignedItems: assignedItems,
+                            assetTypes: assetTypes || 'None'
+                          };
+                        })}
                         columns={[
                           { key: 'col1', name: 'Name', fieldName: 'name', minWidth: 100, maxWidth: 150, isResizable: true },
                           { key: 'col2', name: 'Email', fieldName: 'email', minWidth: 150, maxWidth: 200, isResizable: true },
@@ -661,11 +669,37 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                                 {item.assignedAssets}
                               </span>
                             )
-                          }
+                          },
+                          { key: 'col6', name: 'Asset Types', fieldName: 'assetTypes', minWidth: 120, maxWidth: 250, isResizable: true }
                         ]}
                         setKey="usersList"
                         layoutMode={DetailsListLayoutMode.justified}
                         selectionMode={SelectionMode.none}
+                        onRenderRow={(rowProps) => {
+                          if (!rowProps) return null;
+                          const isExpanded = this.state.expandedUserEmail === rowProps.item.email;
+                          
+                          return (
+                            <div>
+                              <div 
+                                onClick={() => this.setState({ expandedUserEmail: isExpanded ? undefined : rowProps.item.email })}
+                                style={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f3f2f1' } } as any}
+                              >
+                                <DetailsRow {...rowProps} />
+                              </div>
+                              {isExpanded && (
+                                <div style={{ padding: '20px 40px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                  <h4 style={{ marginTop: 0, marginBottom: '15px', color: '#111827' }}>Assets assigned to {rowProps.item.name}</h4>
+                                  {rowProps.item.assignedItems.length > 0 ? (
+                                    <InventoryList items={rowProps.item.assignedItems} isAdmin={false} />
+                                  ) : (
+                                    <p style={{ color: '#6b7280', fontSize: '0.9rem', margin: 0 }}>This user currently has no assets assigned to them.</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }}
                       />
                     </div>
                   </div>
