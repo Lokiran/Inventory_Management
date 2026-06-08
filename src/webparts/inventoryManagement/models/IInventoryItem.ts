@@ -5,10 +5,13 @@ export interface IInventoryItem {
   assetType: string;
   serialNumber: string;
   purchaseDate: string;
+  vendor?: string;
+  condition?: string;
   status: string;
   assignedTo?: string;
   assignedToEmail?: string;
   assignedDate?: string;
   warrantyExpiry?: string;
+  specifications?: string;
   note?: string;
 }

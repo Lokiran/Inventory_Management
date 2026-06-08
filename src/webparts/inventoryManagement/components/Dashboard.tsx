@@ -39,7 +39,19 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
   const { items, requests, isAdmin, isInventoryManager } = props;
   const isManagerView = !!isInventoryManager && !isAdmin;
 
-  // --- Utility Helpers ---
+  // --- Utility: Format Date nicely ---
+  const formatDate = (dateStr: string): string => {
+    if (!dateStr) return 'N/A';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // --- Utility: Semantic Fluent UI Colors for charts ---
   const getFluentColor = (status: string, alpha: number = 1): string => {
     const s = status.toLowerCase();
     if (s.includes('in stock') || s === 'yes' || s === 'approved' || s === 'available') {
@@ -58,6 +70,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
       return `rgba(135, 100, 184, ${alpha})`; // Fluent Purple
     }
     
+    // Fallback: stable hashing to pick harmonious Fluent-like colors
     const hash = status.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const colors = [
       `rgba(0, 120, 212, ${alpha})`, // Blue
@@ -69,53 +82,9 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
     return colors[hash % colors.length];
   };
 
-  const formatDate = (dateStr: string): string => {
-    if (!dateStr) return 'N/A';
-    try {
-      return dateStr.split('T')[0];
-    } catch {
-      return dateStr;
-    }
-  };
-
-  const renderStatusPill = (status: string): JSX.Element => {
-    const s = (status || '').toLowerCase();
-    if (s.includes('approved') || s === 'active' || s === 'assigned' || s === 'in stock' || s === 'yes') {
-      return <span className={`${styles.statusBadge} ${styles.badgeApproved}`}>{status}</span>;
-    }
-    if (s.includes('declined') || s.includes('rejected') || s === 'no' || s.includes('damaged')) {
-      return <span className={`${styles.statusBadge} ${styles.badgeDeclined}`}>{status}</span>;
-    }
-    return <span className={`${styles.statusBadge} ${styles.badgePending}`}>{status || 'Pending'}</span>;
-  };
-
-  // --- Advanced Telemetry Calculations ---
-  const totalAssets = items.length;
-  const totalRequests = requests.length;
-  const pendingRequests = requests.filter(r => {
-    const status = isAdmin ? (r.assetStatus || 'Pending') : (r.status || 'Pending');
-    return status === 'Pending';
-  }).length;
-  const availableAssets = items.filter(i => i.status === 'In Stock' || i.status === 'Yes').length;
-  const awaitingManagerDecision = isManagerView
-    ? requests.filter(r => (r.status || '').toLowerCase() === 'pending').length
-    : 0;
-
-  // 1. Asset Allocation Rate (Admin)
-  const assignedAssetsCount = totalAssets - availableAssets;
-  const allocationRate = totalAssets > 0 ? ((assignedAssetsCount / totalAssets) * 100).toFixed(0) : '0';
-  const stockPercentage = totalAssets > 0 ? ((availableAssets / totalAssets) * 100).toFixed(0) : '0';
-
-  // 2. Request Fulfillment Success Rate (Manager & Employee)
-  const decidedRequests = requests.filter(r => r.status === 'Approved' || r.status === 'Declined');
-  const approvedCount = requests.filter(r => r.status === 'Approved').length;
-  const approvalSuccessRate = decidedRequests.length > 0
-    ? ((approvedCount / decidedRequests.length) * 100).toFixed(0)
-    : '100';
-
   // --- Data Processing for Charts ---
 
-  // 1. Primary status counts
+  // 1. Primary pie: Admin / Employee = asset status from inventory; Inventory Manager = request status from Approvals queue
   const statusCounts = isManagerView
     ? requests.reduce((acc, req) => {
         const status = req.status || 'Pending';
@@ -176,7 +145,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
     ],
   };
 
-  // 3. Doughnut request status counts
+  // 3. Doughnut: Admin = asset assignment status; Manager = fulfillment after manager approval; Employee = request status
   const requestStatusCounts = isManagerView
     ? requests
         .filter(req => (req.status || '').toLowerCase() === 'approved')
@@ -303,19 +272,50 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
     },
   };
 
-  // --- Action Center Data Filtering ---
-  // Admins: Manager approved requests awaiting physical assignment
-  const pendingAssignments = requests.filter(r => r.status === 'Approved' && r.assetStatus === 'Pending');
+  // --- Quick Summaries & Subtitle metrics ---
+  const totalAssets = items.length;
+  const totalRequests = requests.length;
+  const pendingRequests = requests.filter(r => {
+    const status = isAdmin ? (r.assetStatus || 'Pending') : (r.status || 'Pending');
+    return status === 'Pending';
+  }).length;
+  const availableAssets = items.filter(i => i.status === 'In Stock' || i.status === 'Yes').length;
+  const awaitingManagerDecision = isManagerView
+    ? requests.filter(r => (r.status || '').toLowerCase() === 'pending').length
+    : 0;
 
-  // Managers: Unresolved requests awaiting manager approval
-  const pendingApprovals = requests.filter(r => (r.status || '').toLowerCase() === 'pending');
+  const stockPercentage = totalAssets > 0 ? ((availableAssets / totalAssets) * 100).toFixed(0) : '0';
 
-  // Employees: Active personal requests
-  const activePersonalRequests = requests.filter(r => r.status === 'Pending' || (r.status === 'Approved' && r.assetStatus === 'Pending'));
+  // --- Compute Allocation Rate (Admin) ---
+  const assignedAssetsCount = totalAssets - availableAssets;
+  const allocationRate = totalAssets > 0 ? ((assignedAssetsCount / totalAssets) * 100).toFixed(0) : '0';
+
+  // --- Compute Approval Success Rate (Manager & Employee) ---
+  const approvedReqCount = requests.filter(r => (r.status || '').toLowerCase() === 'approved').length;
+  const declinedReqCount = requests.filter(
+    r => (r.status || '').toLowerCase() === 'declined' || (r.status || '').toLowerCase() === 'rejected'
+  ).length;
+  const totalDecidedRequests = approvedReqCount + declinedReqCount;
+  const approvalSuccessRate = totalDecidedRequests > 0 ? ((approvedReqCount / totalDecidedRequests) * 100).toFixed(0) : '0';
+
+  // --- Filter for pending assignments (Admin Action Center) ---
+  const pendingAssignments = requests.filter(
+    r => (r.status || '').toLowerCase() === 'approved' && (r.assetStatus || 'Pending') === 'Pending'
+  );
+  const recentAssignments = pendingAssignments.slice(0, 5);
+
+  // --- Filter for pending decisions (Manager Action Center) ---
+  const pendingApprovals = requests.filter(
+    r => (r.status || 'Pending') === 'Pending' || (r.status || '').toLowerCase() === 'pending'
+  );
+  const recentApprovals = pendingApprovals.slice(0, 5);
+
+  // --- Filter for employee's recent requests (Employee Action Center) ---
+  const recentEmployeeRequests = requests.slice(0, 5);
 
   return (
     <div className={styles.dashboard}>
-      {/* SharePoint Status Banners */}
+      {/* SharePoint Status Banners (MessageBars) */}
       {isManagerView && (
         <div className={styles.dashboardIntro}>
           <MessageBar messageBarType={MessageBarType.info}>
@@ -347,9 +347,15 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
           </div>
           <div className={styles.cardInfo}>
             <span className={styles.summaryValue}>{totalAssets}</span>
-            <span className={styles.summaryLabel}>Total Assets</span>
+            <span className={styles.summaryLabel}>
+              {isAdmin ? 'Total Assets' : !isInventoryManager ? 'My Devices' : 'Total Assets'}
+            </span>
             <span className={styles.summarySubtitle}>
-              {isAdmin ? `${totalAssets} items • ${allocationRate}% allocated` : `${totalAssets} item${totalAssets === 1 ? '' : 's'} in registry`}
+              {isAdmin
+                ? `Allocation rate: ${allocationRate}% allocated`
+                : !isInventoryManager
+                  ? `${totalAssets} assigned hardware item${totalAssets === 1 ? '' : 's'}`
+                  : `${totalAssets} items in catalog`}
             </span>
           </div>
         </div>
@@ -379,9 +385,9 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
               {isManagerView ? 'Requests in Queue' : 'Total Requests'}
             </span>
             <span className={styles.summarySubtitle}>
-              {!isAdmin && !isInventoryManager 
-                ? `${totalRequests} requested • ${approvalSuccessRate}% approval`
-                : `${totalRequests} submissions • ${approvalSuccessRate}% approval`}
+              {isAdmin
+                ? `${totalRequests} queue requests`
+                : `Approval success: ${approvalSuccessRate}%`}
             </span>
           </div>
         </div>
@@ -401,7 +407,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
             <span className={styles.summarySubtitle}>
               {isManagerView
                 ? `${awaitingManagerDecision} requires review`
-                : `${pendingRequests} awaiting processing`}
+                : `${pendingRequests} under assignment review`}
             </span>
           </div>
         </div>
@@ -409,7 +415,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
 
       {/* Modern Dashboard Charts Grid */}
       <div className={styles.chartsGrid}>
-        {/* Chart 1: Primary Status */}
+        {/* Chart 1: Primary Status (Pie) */}
         <div className={styles.chartCard}>
           <div className={styles.chartHeader}>
             <h3>{primaryPieTitle}</h3>
@@ -420,7 +426,7 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
           </div>
         </div>
 
-        {/* Chart 2: Types */}
+        {/* Chart 2: Types (Bar) */}
         <div className={styles.chartCard}>
           <div className={styles.chartHeader}>
             <h3>Assets by Type</h3>
@@ -449,189 +455,229 @@ export const Dashboard: React.FunctionComponent<IDashboardProps> = (props) => {
         </div>
       </div>
 
-      {/* --- Action Centers (Bottom panels tailored per role) --- */}
-
-      {/* A. ADMIN ACTION CENTER: Approved Requests Awaiting IT Asset Assignment */}
+      {/* --- Action Center Section --- */}
       {isAdmin && (
-        <div className={styles.actionCard}>
-          <div className={styles.actionHeader}>
-            <div className={styles.headerText}>
-              <h3>IT Fulfillment Action Center</h3>
-              <span className={styles.actionSubtitle}>Manager-approved requests requiring physical device assignment and handout</span>
+        <div className={styles.actionCenter}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h3>
+                <Icon iconName="ReviewRequestMirrored" style={{ marginRight: '8px' }} />
+                Asset Assignment Action Center
+              </h3>
+              <span className={styles.sectionSubtitle}>
+                Recent manager-approved requests awaiting physical hardware handout by administrators
+              </span>
             </div>
-            <span className={styles.headerBadge}>{pendingAssignments.length} Awaiting Handout</span>
           </div>
           <div className={styles.tableWrapper}>
-            {pendingAssignments.length === 0 ? (
-              <div className={styles.emptyState}>
-                <Icon iconName="Completed" />
-                <span>All approved requests have been physically assigned! Excellent job.</span>
-              </div>
-            ) : (
+            {recentAssignments.length > 0 ? (
               <table className={styles.actionTable}>
                 <thead>
                   <tr>
                     <th>Requester</th>
-                    <th>Equipment Type</th>
+                    <th>Asset Requested</th>
                     <th>Qty</th>
                     <th>Date Approved</th>
-                    <th>Fulfillment Status</th>
+                    <th>Status Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingAssignments.slice(0, 5).map(req => (
+                  {recentAssignments.map(req => (
                     <tr key={req.id}>
                       <td><strong>{req.requesterName}</strong></td>
                       <td>{req.assetTitle}</td>
                       <td>{req.quantity}</td>
                       <td>{formatDate(req.requestDate)}</td>
-                      <td>{renderStatusPill('Awaiting Handout')}</td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${styles.badgePending}`}>
+                          Awaiting Handoff
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            ) : (
+              <div className={styles.noDataMessage}>
+                <Icon iconName="CompletedStateMirrored" />
+                <span>All assignments caught up! No pending physical handouts.</span>
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* B. MANAGER ACTION CENTER: Requests Awaiting Manager Review */}
       {isManagerView && (
-        <div className={styles.actionCard}>
-          <div className={styles.actionHeader}>
-            <div className={styles.headerText}>
-              <h3>Manager Approval Queue</h3>
-              <span className={styles.actionSubtitle}>Incoming equipment requests awaiting your review and approval</span>
+        <div className={styles.actionCenter}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h3>
+                <Icon iconName="ReviewRequest" style={{ marginRight: '8px' }} />
+                Pending Manager Decisions
+              </h3>
+              <span className={styles.sectionSubtitle}>
+                Recent employee requests awaiting your approval or decline
+              </span>
             </div>
-            <span className={styles.headerBadge}>{pendingApprovals.length} Pending Review</span>
           </div>
           <div className={styles.tableWrapper}>
-            {pendingApprovals.length === 0 ? (
-              <div className={styles.emptyState}>
-                <Icon iconName="Completed" />
-                <span>Excellent! You have cleared all pending requests.</span>
-              </div>
-            ) : (
+            {recentApprovals.length > 0 ? (
               <table className={styles.actionTable}>
                 <thead>
                   <tr>
                     <th>Requester</th>
-                    <th>Requested Item</th>
+                    <th>Asset Requested</th>
                     <th>Qty</th>
-                    <th>Date Submitted</th>
-                    <th>Purpose / Business Reason</th>
-                    <th>Action</th>
+                    <th>Date Requested</th>
+                    <th>Reason / Justification</th>
+                    <th>Action State</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingApprovals.slice(0, 5).map(req => (
+                  {recentApprovals.map(req => (
                     <tr key={req.id}>
                       <td><strong>{req.requesterName}</strong></td>
                       <td>{req.assetTitle}</td>
                       <td>{req.quantity}</td>
                       <td>{formatDate(req.requestDate)}</td>
-                      <td><em>{req.reason || 'No justification provided'}</em></td>
-                      <td>{renderStatusPill('Pending Review')}</td>
+                      <td style={{ maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {req.reason || 'No justification specified'}
+                      </td>
+                      <td>
+                        <span className={`${styles.statusBadge} ${styles.badgePending}`}>
+                          Awaiting Approval
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            ) : (
+              <div className={styles.noDataMessage}>
+                <Icon iconName="CheckMark" />
+                <span>Zero pending requests! Your approvals queue is clear.</span>
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* C. EMPLOYEE ACTION CENTER: Personal Requests Tracker & Assigned Devices */}
       {!isAdmin && !isInventoryManager && (
-        <React.Fragment>
-          {/* Employee active requests */}
-          <div className={styles.actionCard}>
-            <div className={styles.actionHeader}>
-              <div className={styles.headerText}>
-                <h3>My Active Requests Tracker</h3>
-                <span className={styles.actionSubtitle}>Real-time tracking of your pending asset requisitions</span>
+        <div className={styles.splitLayout}>
+          {/* Active Requests Tracker */}
+          <div className={styles.actionCenter}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <h3>
+                  <Icon iconName="Send" style={{ marginRight: '8px' }} />
+                  Active Requests Status
+                </h3>
+                <span className={styles.sectionSubtitle}>
+                  Recent hardware requests in the verification pipeline
+                </span>
               </div>
-              <span className={styles.headerBadge}>{activePersonalRequests.length} Active</span>
             </div>
             <div className={styles.tableWrapper}>
-              {activePersonalRequests.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <Icon iconName="Info" />
-                  <span>You have no active equipment requests at this time.</span>
-                </div>
-              ) : (
+              {recentEmployeeRequests.length > 0 ? (
                 <table className={styles.actionTable}>
                   <thead>
                     <tr>
-                      <th>Requested Equipment</th>
+                      <th>Asset</th>
                       <th>Qty</th>
-                      <th>Date Requested</th>
-                      <th>Manager Decision</th>
-                      <th>IT Fulfillment</th>
+                      <th>Requested Date</th>
+                      <th>Fulfillment State</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activePersonalRequests.map(req => (
-                      <tr key={req.id}>
-                        <td><strong>{req.assetTitle}</strong></td>
-                        <td>{req.quantity}</td>
-                        <td>{formatDate(req.requestDate)}</td>
-                        <td>{renderStatusPill(req.status)}</td>
-                        <td>
-                          {req.status === 'Approved' 
-                            ? renderStatusPill('Awaiting Handout') 
-                            : renderStatusPill('Awaiting Manager Approval')}
-                        </td>
-                      </tr>
-                    ))}
+                    {recentEmployeeRequests.map(req => {
+                      const isApproved = (req.status || '').toLowerCase() === 'approved';
+                      const isDeclined = (req.status || '').toLowerCase() === 'declined' || (req.status || '').toLowerCase() === 'rejected';
+                      const isAssetAssigned = (req.assetStatus || '').toLowerCase() === 'approved';
+
+                      let badgeClass = styles.badgePending;
+                      let badgeText = 'Awaiting Review';
+
+                      if (isApproved) {
+                        if (isAssetAssigned) {
+                          badgeClass = styles.badgeApproved;
+                          badgeText = 'Completed & Assigned';
+                        } else {
+                          badgeClass = styles.badgePending;
+                          badgeText = 'Approved, Awaiting Handoff';
+                        }
+                      } else if (isDeclined) {
+                        badgeClass = styles.badgeDeclined;
+                        badgeText = 'Declined';
+                      }
+
+                      return (
+                        <tr key={req.id}>
+                          <td><strong>{req.assetTitle}</strong></td>
+                          <td>{req.quantity}</td>
+                          <td>{formatDate(req.requestDate)}</td>
+                          <td>
+                            <span className={`${styles.statusBadge} ${badgeClass}`}>
+                              {badgeText}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+              ) : (
+                <div className={styles.noDataMessage}>
+                  <Icon iconName="Info" />
+                  <span>No active requests placed recently.</span>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Employee assigned devices */}
-          <div className={styles.actionCard}>
-            <div className={styles.actionHeader}>
-              <div className={styles.headerText}>
-                <h3>My Assigned Devices</h3>
-                <span className={styles.actionSubtitle}>Equipment currently assigned and in your possession</span>
+          {/* Assigned Devices */}
+          <div className={styles.actionCenter}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <h3>
+                  <Icon iconName="AppIconDefault" style={{ marginRight: '8px' }} />
+                  My Assigned Equipment
+                </h3>
+                <span className={styles.sectionSubtitle}>
+                  Hardware currently registered and assigned to you
+                </span>
               </div>
-              <span className={styles.headerBadge}>{items.length} Assigned</span>
             </div>
             <div className={styles.tableWrapper}>
-              {items.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <Icon iconName="DeviceOff" />
-                  <span>You do not have any registered devices assigned to you.</span>
-                </div>
-              ) : (
+              {items.length > 0 ? (
                 <table className={styles.actionTable}>
                   <thead>
                     <tr>
-                      <th>Equipment Name</th>
+                      <th>Device Name</th>
                       <th>Category</th>
                       <th>Serial Number</th>
-                      <th>Status State</th>
-                      <th>Notes / Specification</th>
+                      <th>Assigned Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map(item => (
+                    {items.slice(0, 5).map(item => (
                       <tr key={item.id}>
-                        <td><strong>{item.title || item.assetName}</strong></td>
+                        <td><strong>{item.title}</strong></td>
                         <td>{item.assetType}</td>
                         <td><code>{item.serialNumber || 'N/A'}</code></td>
-                        <td>{renderStatusPill(item.status || 'Active')}</td>
-                        <td><em>{item.note || 'No additional details'}</em></td>
+                        <td>{formatDate(item.assignedDate || '')}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              ) : (
+                <div className={styles.noDataMessage}>
+                  <Icon iconName="Devices3" />
+                  <span>No equipment currently assigned to you.</span>
+                </div>
               )}
             </div>
           </div>
-        </React.Fragment>
+        </div>
       )}
     </div>
   );

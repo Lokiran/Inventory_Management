@@ -21,6 +21,9 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
     { key: 'column4', name: 'Type', fieldName: 'assetType', minWidth: 80, maxWidth: 100, isResizable: true },
     { key: 'column5', name: 'Serial Number', fieldName: 'serialNumber', minWidth: 100, maxWidth: 120, isResizable: true },
     { key: 'column6', name: 'Purchase Date', fieldName: 'purchaseDate', minWidth: 100, maxWidth: 120, isResizable: true },
+    { key: 'columnVendor', name: 'Vendor', fieldName: 'vendor', minWidth: 80, maxWidth: 100, isResizable: true },
+    { key: 'columnCondition', name: 'Condition', fieldName: 'condition', minWidth: 80, maxWidth: 100, isResizable: true },
+    { key: 'columnWarranty', name: 'Warranty Expiry', fieldName: 'warrantyExpiry', minWidth: 100, maxWidth: 120, isResizable: true },
     { 
       key: 'column7', 
       name: 'Status', 
@@ -49,7 +52,7 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
       }
     },
     { key: 'column8', name: 'Assigned To', fieldName: 'assignedTo', minWidth: 100, maxWidth: 150, isResizable: true },
-    { key: 'column9', name: 'Note', fieldName: 'note', minWidth: 150, maxWidth: 300, isResizable: true },
+    { key: 'column9', name: 'Specifications', fieldName: 'specifications', minWidth: 150, maxWidth: 300, isResizable: true },
   ];
 
   // Grouping Logic for Admins

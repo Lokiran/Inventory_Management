@@ -24,6 +24,14 @@ const assetTypeOptions: IDropdownOption[] = [
   { key: 'Other', text: 'Other' }
 ];
 
+const conditionOptions: IDropdownOption[] = [
+  { key: 'New', text: 'New' },
+  { key: 'Good', text: 'Good' },
+  { key: 'Fair', text: 'Fair' },
+  { key: 'Poor', text: 'Poor' },
+  { key: 'Damaged', text: 'Damaged' }
+];
+
 export interface IAssetFormProps {
   isOpen: boolean;
   onClose: () => void;
@@ -38,7 +46,10 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
   const [assetType, setAssetType] = React.useState<string>('Laptop');
   const [serialNumber, setSerialNumber] = React.useState('');
   const [purchaseDate, setPurchaseDate] = React.useState(new Date().toISOString().split('T')[0]);
-  const [note, setNote] = React.useState('');
+  const [vendor, setVendor] = React.useState('');
+  const [condition, setCondition] = React.useState('New');
+  const [warrantyExpiry, setWarrantyExpiry] = React.useState('');
+  const [specifications, setSpecifications] = React.useState('');
 
   const isAdmin = props.currentUserRole === 'Admin';
   const isManager = props.currentUserRole === 'Inventory Manager';
@@ -54,11 +65,17 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
       assetType,
       serialNumber,
       purchaseDate,
-      note
+      vendor,
+      condition,
+      warrantyExpiry,
+      specifications
     });
     setAssetName('');
     setSerialNumber('');
-    setNote('');
+    setVendor('');
+    setCondition('New');
+    setWarrantyExpiry('');
+    setSpecifications('');
     props.onClose();
   };
 
@@ -109,11 +126,30 @@ export const AssetForm: React.FC<IAssetFormProps> = (props) => {
           required
         />
         <TextField
-          label={isAdmin ? "Notes (Employee details, etc.)" : "Notes"}
+          label="Vendor"
+          value={vendor}
+          placeholder="E.g., Dell, Apple, Microsoft, Lenovo"
+          onChange={(_, val) => setVendor(val || '')}
+        />
+        <Dropdown
+          label="Condition"
+          selectedKey={condition}
+          options={conditionOptions}
+          onChange={(_, opt) => setCondition(opt?.key as string || 'New')}
+        />
+        <TextField
+          label="Warranty Expiry Date"
+          type="date"
+          value={warrantyExpiry}
+          onChange={(_, val) => setWarrantyExpiry(val || '')}
+        />
+        <TextField
+          label="Specifications"
+          placeholder="E.g., Intel i7, 16GB RAM, 512GB SSD, etc."
           multiline
           rows={3}
-          value={note}
-          onChange={(_, val) => setNote(val || '')}
+          value={specifications}
+          onChange={(_, val) => setSpecifications(val || '')}
         />
         <Stack horizontal tokens={stackTokens} style={{ marginTop: 20 }}>
           <PrimaryButton text="Add Asset" onClick={onSave} disabled={!assetName || !serialNumber} />

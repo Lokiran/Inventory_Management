@@ -25,18 +25,87 @@ export interface IRequestListProps {
 export const RequestList: React.FC<IRequestListProps> = (props) => {
   const columns: IColumn[] = [
     {
-      key: 'column1',
-      name: 'ID',
-      fieldName: 'requestKey',
-      minWidth: 110,
-      maxWidth: 140,
-      isResizable: true,
-      onRender: (item: IRequest) => item.requestKey || item.id
+      key: 'columnEmployeeName',
+      name: 'Employee Name',
+      fieldName: 'requesterName',
+      minWidth: 100,
+      maxWidth: 150,
+      isResizable: true
     },
-    { key: 'column2', name: 'Requester', fieldName: 'requesterName', minWidth: 100, maxWidth: 150, isResizable: true },
-    { key: 'column3', name: 'Asset Title', fieldName: 'assetTitle', minWidth: 120, maxWidth: 200, isResizable: true },
-    { key: 'column4', name: 'Quantity', fieldName: 'quantity', minWidth: 60, maxWidth: 80, isResizable: true },
-    { key: 'column5', name: 'Date', fieldName: 'requestDate', minWidth: 100, maxWidth: 120, isResizable: true },
+    {
+      key: 'columnEmployeeId',
+      name: 'Employee ID',
+      fieldName: 'employeeId',
+      minWidth: 90,
+      maxWidth: 110,
+      isResizable: true,
+      onRender: (item: IRequest) => item.employeeId || '-'
+    },
+    {
+      key: 'columnAssetType',
+      name: 'Asset Type',
+      fieldName: 'assetTitle',
+      minWidth: 100,
+      maxWidth: 120,
+      isResizable: true
+    },
+    {
+      key: 'columnQuantity',
+      name: 'Quantity',
+      fieldName: 'quantity',
+      minWidth: 60,
+      maxWidth: 80,
+      isResizable: true
+    },
+    {
+      key: 'columnReason',
+      name: 'Reason for Request',
+      fieldName: 'reason',
+      minWidth: 150,
+      maxWidth: 250,
+      isResizable: true,
+      onRender: (item: IRequest) => item.reason || '-'
+    },
+    {
+      key: 'columnPriority',
+      name: 'Priority',
+      fieldName: 'priority',
+      minWidth: 80,
+      maxWidth: 100,
+      isResizable: true,
+      onRender: (item: IRequest) => {
+        const priority = item.priority || 'Medium';
+        let color = '#4b5563'; // default medium (gray)
+        let backgroundColor = '#f3f4f6';
+        if (priority === 'High') {
+          color = '#b91c1c';
+          backgroundColor = '#fee2e2';
+        } else if (priority === 'Low') {
+          color = '#1e3a8a';
+          backgroundColor = '#dbeafe';
+        }
+        return (
+          <span style={{
+            backgroundColor,
+            color,
+            padding: '4px 10px',
+            borderRadius: '9999px',
+            fontSize: '0.75rem',
+            fontWeight: 600
+          }}>
+            {priority}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'columnRequestDate',
+      name: 'Request Date',
+      fieldName: 'requestDate',
+      minWidth: 100,
+      maxWidth: 120,
+      isResizable: true
+    },
     ...(props.hideStatusColumn ? [] : [{ 
       key: 'column6', 
       name: props.statusColumnLabel || 'Status', 
@@ -46,7 +115,7 @@ export const RequestList: React.FC<IRequestListProps> = (props) => {
       isResizable: true,
       onRender: (item: IRequest) => {
         let val: string = item[props.statusField || 'status'] || 'Pending';
-        if (val === 'Pending') val = 'Pending Manager';
+        if (val === 'Pending') val = 'Pending';
 
         let backgroundColor = '#fef3c7'; // default pending (yellow)
         let textColor = '#92400e';

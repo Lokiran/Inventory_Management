@@ -31,7 +31,9 @@ const stackTokens: IStackTokens = { childrenGap: 15 };
 
 export const RequestForm: React.FC<IRequestFormProps> = (props) => {
   const [selectedRequesterId, setSelectedRequesterId] = React.useState<string | undefined>(undefined);
+  const [employeeId, setEmployeeId] = React.useState('');
   const [selectedAssetType, setSelectedAssetType] = React.useState<string | undefined>(undefined);
+  const [priority, setPriority] = React.useState<'High' | 'Medium' | 'Low'>('Medium');
   const [quantity, setQuantity] = React.useState<number>(1);
   const [reason, setReason] = React.useState('');
 
@@ -63,6 +65,10 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
   React.useEffect(() => {
     if (isEmployee && employeeOptions.length === 1) {
       setSelectedRequesterId(employeeOptions[0].key as string);
+      const emp = allEmployees.find(e => e.id === employeeOptions[0].key);
+      if (emp) {
+        setEmployeeId(emp.id);
+      }
     }
   }, [isEmployee, employeeOptions, props.isOpen]);
 
@@ -80,20 +86,25 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
         { key: 'Other', text: 'Other' }
       ];
 
+  const isFormValid = !!selectedRequesterId && !!employeeId.trim() && !!selectedAssetType && quantity > 0;
+
   const onSave = () => {
     // Validate role: employees can only request for themselves
     if (isEmployee && selectedRequesterId) {
-      const selectedEmployee = props.employees.find(e => e.id === selectedRequesterId);
+      const selectedEmployee = allEmployees.find(e => e.id === selectedRequesterId);
       if (selectedEmployee && selectedEmployee.name.toLowerCase() !== props.currentUserName.toLowerCase()) {
         alert('Employees can only request assets for themselves.');
         return;
       }
     }
 
-    const employee = props.employees.find(e => e.id === selectedRequesterId);
+    const employee = allEmployees.find(e => e.id === selectedRequesterId);
 
     // Find a real asset ID to satisfy SharePoint backend lookups
-    let matchingAsset = props.availableAssets.find(a => a.assetType === selectedAssetType && (a.status === 'In Stock' || a.status === 'Yes'));
+    let matchingAsset = props.availableAssets.find(
+      a => a.assetType === selectedAssetType && 
+           (a.status === 'In Stock' || a.status === 'Yes')
+    );
     if (!matchingAsset) {
       matchingAsset = props.availableAssets.find(a => a.assetType === selectedAssetType);
     }
@@ -101,13 +112,18 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
     if (selectedAssetType && employee) {
       props.onSubmitRequest({
         requesterName: employee.name,
+        employeeId: employeeId,
         assetId: matchingAsset ? matchingAsset.id : '1',
         assetTitle: selectedAssetType,
+        priority: priority,
         quantity,
         reason
-      });
+      } as any);
+
       setSelectedRequesterId(undefined);
+      setEmployeeId('');
       setSelectedAssetType(undefined);
+      setPriority('Medium');
       setQuantity(1);
       setReason('');
       props.onClose();
@@ -132,15 +148,41 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
           label={isEmployee ? "Requester (You)" : "Requester (Employee)"}
           selectedKey={selectedRequesterId}
           options={employeeOptions}
-          onChange={(_, opt) => setSelectedRequesterId(opt?.key as string)}
+          onChange={(_, opt) => {
+            const empId = opt?.key as string;
+            setSelectedRequesterId(empId);
+            const emp = allEmployees.find(e => e.id === empId);
+            if (emp) {
+              setEmployeeId(emp.id);
+            }
+          }}
           required
           disabled={isEmployee && employeeOptions.length === 1}
+        />
+        <TextField
+          label="Employee ID"
+          value={employeeId}
+          onChange={(_, val) => setEmployeeId(val || '')}
+          required
         />
         <Dropdown
           label="Asset Type"
           selectedKey={selectedAssetType}
           options={assetTypeOptions}
-          onChange={(_, opt) => setSelectedAssetType(opt?.key as string)}
+          onChange={(_, opt) => {
+            setSelectedAssetType(opt?.key as string);
+          }}
+          required
+        />
+        <Dropdown
+          label="Priority"
+          selectedKey={priority}
+          options={[
+            { key: 'High', text: 'High' },
+            { key: 'Medium', text: 'Medium' },
+            { key: 'Low', text: 'Low' }
+          ]}
+          onChange={(_, opt) => setPriority(opt?.key as any)}
           required
         />
         <TextField
@@ -158,7 +200,7 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
           onChange={(_, val) => setReason(val || '')}
         />
         <Stack horizontal tokens={stackTokens} style={{ marginTop: 20 }}>
-          <PrimaryButton text="Submit Request" onClick={onSave} disabled={!selectedRequesterId || !selectedAssetType} />
+          <PrimaryButton text="Submit Request" onClick={onSave} disabled={!isFormValid} />
           <DefaultButton text="Cancel" onClick={props.onClose} />
         </Stack>
       </Stack>
