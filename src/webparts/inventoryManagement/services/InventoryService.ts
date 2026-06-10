@@ -451,17 +451,8 @@ export class InventoryService {
       const specificationsKey = findFieldInternalName("specifications", "Specifications");
       const noteKey = findFieldInternalName("note", "Note");
 
-      return items.map((item: any) => ({
-        id: item.ID.toString(),
-        title: item.Title || "",
-        assetName: item[assetNameKey] || item.AssetName || item.Asset_x0020_Name || item.Asset || "",
-        assetType: item[assetTypeKey] || item.AssetType || item.Asset_x0020_Type || item.Type || "",
-        serialNumber: item[serialNumberKey] || item.SerialNumber || item.Serial_x0020_Number || "",
-        purchaseDate: item[purchaseDateKey] || item.PurchaseDate || item.Purchase_x0020_Date || "",
-        vendor: item[vendorKey] || item.Vendor || item.VendorName || "",
-        condition: item[conditionKey] || item.Condition || item.AssetCondition || "",
-        status: item[statusKey] || item.Status || item.AssetStatus || "",
-        assignedTo: (() => {
+      return items.map((item: any) => {
+        const assignedToVal = (() => {
           const assignedField = item[assignedToKey] || item.AssignedTo || item.Assigned_x0020_To;
           if (assignedField) {
             if (typeof assignedField === 'string') return assignedField;
@@ -485,12 +476,34 @@ export class InventoryService {
           if (fromStatus) return fromStatus;
           
           return "";
-        })(),
-        assignedDate: item.Modified || "",
-        warrantyExpiry: item[warrantyExpiryKey] || item.WarrantyExpiry || item.Warranty_x0020_Expiry || "",
-        specifications: item[specificationsKey] || item.Specifications || item.SpecificationsText || item.Note || item.Notes || "",
-        note: item[noteKey] || item.Note || item.Notes || ""
-      }));
+        })();
+
+        const rawStatus = item[statusKey] || item.Status || item.AssetStatus || "";
+        let finalStatus = rawStatus;
+        const statusLower = (rawStatus || "").toLowerCase();
+        if (statusLower === "assigned" || statusLower.startsWith("assigned")) {
+          if (!assignedToVal || assignedToVal.trim() === "") {
+            finalStatus = "In Stock";
+          }
+        }
+
+        return {
+          id: item.ID.toString(),
+          title: item.Title || "",
+          assetName: item[assetNameKey] || item.AssetName || item.Asset_x0020_Name || item.Asset || "",
+          assetType: item[assetTypeKey] || item.AssetType || item.Asset_x0020_Type || item.Type || "",
+          serialNumber: item[serialNumberKey] || item.SerialNumber || item.Serial_x0020_Number || "",
+          purchaseDate: item[purchaseDateKey] || item.PurchaseDate || item.Purchase_x0020_Date || "",
+          vendor: item[vendorKey] || item.Vendor || item.VendorName || "",
+          condition: item[conditionKey] || item.Condition || item.AssetCondition || "",
+          status: finalStatus,
+          assignedTo: assignedToVal,
+          assignedDate: item.Modified || "",
+          warrantyExpiry: item[warrantyExpiryKey] || item.WarrantyExpiry || item.Warranty_x0020_Expiry || "",
+          specifications: item[specificationsKey] || item.Specifications || item.SpecificationsText || item.Note || item.Notes || "",
+          note: item[noteKey] || item.Note || item.Notes || ""
+        };
+      });
     } catch (error: any) {
       console.error("Error fetching items from SharePoint:", error);
       throw error;
@@ -1144,6 +1157,266 @@ export class InventoryService {
     }
   }
 
+  private static _resolveMappingPayload(
+    mappingFields: any[],
+    employeeName: string,
+    employeeId: string,
+    assetName: string,
+    serialNumber: string,
+    priority: string,
+    requestedDate: string,
+    reason: string,
+    assignedDate: string,
+    assignedToId: number | null,
+    isEmployePerson: boolean
+  ): any {
+    const findField = (searchStr: string, fallback: string): string => {
+      let field = mappingFields.find((f: any) => f.Title.toLowerCase() === searchStr.toLowerCase());
+      if (field) return field.InternalName;
+
+      field = mappingFields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase());
+      if (field) return field.InternalName;
+
+      const normalizedSearch = searchStr.toLowerCase().replace(/[^a-z0-9]/g, '');
+      field = mappingFields.find((f: any) => f.Title.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedSearch);
+      if (field) return field.InternalName;
+
+      field = mappingFields.find((f: any) => f.InternalName.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedSearch);
+      if (field) return field.InternalName;
+
+      return fallback;
+    };
+
+    const titleField = mappingFields.find((f: any) => f.InternalName === "Title");
+    const titleFieldTitle = titleField ? (titleField.Title || "").toLowerCase().trim() : "";
+    const isTitleEmploye = titleFieldTitle === "employe" || titleFieldTitle === "employee";
+
+    let employeeNameFieldName = "Title";
+    if (isTitleEmploye) {
+      employeeNameFieldName = "Title";
+    } else {
+      const f = mappingFields.find((x: any) => {
+        const title = (x.Title || "").toLowerCase().trim();
+        const internal = (x.InternalName || "").toLowerCase().trim();
+        return title === "employe" || title === "employee" || internal === "employe" || internal === "employee";
+      });
+      if (f) employeeNameFieldName = f.InternalName;
+    }
+
+    const employeeIdFieldName = (() => {
+      const searchFields = mappingFields.filter((f: any) => f.InternalName !== employeeNameFieldName);
+      
+      const findFieldInList = (list: any[], search: string): string | null => {
+        let f = list.find((x: any) => (x.Title || "").toLowerCase().trim() === search.toLowerCase());
+        if (f) return f.InternalName;
+        f = list.find((x: any) => x.InternalName.toLowerCase().trim() === search.toLowerCase());
+        if (f) return f.InternalName;
+        const norm = search.toLowerCase().replace(/[^a-z0-9]/g, '');
+        f = list.find((x: any) => (x.Title || "").toLowerCase().replace(/[^a-z0-9]/g, '') === norm);
+        if (f) return f.InternalName;
+        return null;
+      };
+
+      return (
+        findFieldInList(searchFields, "employe id") ||
+        findFieldInList(searchFields, "employee id") ||
+        findFieldInList(searchFields, "employeeid") ||
+        findFieldInList(searchFields, "employeid") ||
+        findFieldInList(searchFields, "employe") ||
+        "EmployeeID"
+      );
+    })();
+
+    const assetNameFieldName = findField("asset name", "AssetName");
+    const serialNumberFieldName = findField("serial number", "SerialNumber");
+    const priorityFieldName = findField("priority", "Priority");
+    const requestedDateFieldName = findField("requested date", "RequestedDate");
+    const reasonFieldName = findField("reason for request", "ReasonforRequest");
+    const assignedDateFieldName = findField("assigned date", "AssignedDate");
+
+    const payload: any = {};
+
+    // Map Employee Name to the Employee column (either Title or a custom field)
+    if (employeeNameFieldName === "Title") {
+      payload["Title"] = employeeName;
+    } else {
+      payload["Title"] = `Assignment of ${assetName}`;
+      
+      const empFieldObj = mappingFields.find((f: any) => f.InternalName === employeeNameFieldName);
+      const isEmpFieldPerson = empFieldObj && (empFieldObj.TypeAsString === "User" || empFieldObj.TypeAsString === "UserMulti");
+      
+      if (isEmpFieldPerson && assignedToId !== null) {
+        payload[`${employeeNameFieldName}Id`] = assignedToId;
+      } else {
+        payload[employeeNameFieldName] = employeeName;
+      }
+    }
+
+    // Map Employee ID to the Employee ID column
+    const empIdFieldObj = mappingFields.find((f: any) => f.InternalName === employeeIdFieldName);
+    const isEmpIdFieldPerson = empIdFieldObj && (empIdFieldObj.TypeAsString === "User" || empIdFieldObj.TypeAsString === "UserMulti");
+    
+    if (isEmpIdFieldPerson && assignedToId !== null) {
+      payload[`${employeeIdFieldName}Id`] = assignedToId;
+    } else {
+      payload[employeeIdFieldName] = employeeId;
+    }
+
+    // Map other columns
+    payload[assetNameFieldName] = assetName;
+    payload[serialNumberFieldName] = serialNumber;
+    payload[priorityFieldName] = priority;
+    payload[requestedDateFieldName] = requestedDate;
+    payload[reasonFieldName] = reason;
+    payload[assignedDateFieldName] = assignedDate;
+
+    return payload;
+  }
+
+  private static async _writeToMappingList(
+    employeeName: string,
+    employeeId: string,
+    employeeEmail: string,
+    assetName: string,
+    serialNumber: string,
+    priority: string,
+    requestedDate: string,
+    reason: string,
+    assignedDate: string
+  ): Promise<void> {
+    const sp = getSP();
+    const mappingList = await InventoryService.getMappingList();
+    const mappingFields: any[] = await mappingList.fields.select("InternalName", "Title", "TypeAsString")();
+
+    // Resolve user ID
+    let assignedToId: number | null = null;
+    if (employeeEmail) {
+      try {
+        const user: any = await sp.web.ensureUser(employeeEmail);
+        assignedToId = user.data ? user.data.Id : user.Id;
+      } catch (e) {
+        console.warn(`Could not resolve user ${employeeEmail} in SharePoint during mapping write.`, e);
+      }
+    }
+
+    const titleField = mappingFields.find((f: any) => f.InternalName === "Title");
+    const titleFieldTitle = titleField ? (titleField.Title || "").toLowerCase().trim() : "";
+    const isTitleEmploye = titleFieldTitle === "employe" || titleFieldTitle === "employee";
+
+    const employeFieldName = isTitleEmploye ? "Title" : (() => {
+      let f = mappingFields.find((x: any) => x.InternalName.toLowerCase() === "employe");
+      if (f) return f.InternalName;
+      f = mappingFields.find((x: any) => (x.Title || "").toLowerCase() === "employe");
+      return f ? f.InternalName : "Employe";
+    })();
+
+    const employeFieldObj = mappingFields.find((f: any) => f.InternalName === employeFieldName);
+    const isEmployePerson = employeFieldObj && (employeFieldObj.TypeAsString === "User" || employeFieldObj.TypeAsString === "UserMulti");
+
+    // Dynamic field resolving
+    const dynamicMappingPayload = InventoryService._resolveMappingPayload(
+      mappingFields,
+      employeeName,
+      employeeId,
+      assetName,
+      serialNumber,
+      priority,
+      requestedDate,
+      reason,
+      assignedDate,
+      assignedToId,
+      isEmployePerson
+    );
+
+    const mappingPayloadsToTry: any[] = [];
+    mappingPayloadsToTry.push(dynamicMappingPayload);
+
+    // Fallbacks
+    // Fallback 1: Title = employeeName, Employe = employeeId
+    mappingPayloadsToTry.push({
+      Title: employeeName,
+      Employe: employeeId,
+      AssetName: assetName,
+      SerialNumber: serialNumber,
+      Priority: priority,
+      RequestedDate: requestedDate,
+      ReasonforRequest: reason,
+      AssignedDate: assignedDate
+    });
+
+    // Fallback 2: Title = employeeName, EmployeeID = employeeId
+    mappingPayloadsToTry.push({
+      Title: employeeName,
+      EmployeeID: employeeId,
+      AssetName: assetName,
+      SerialNumber: serialNumber,
+      Priority: priority,
+      RequestedDate: requestedDate,
+      ReasonforRequest: reason,
+      AssignedDate: assignedDate
+    });
+
+    // Fallback 3: Title = employeeName, EmployeId = assignedToId, EmployeeID = employeeId
+    if (assignedToId !== null) {
+      mappingPayloadsToTry.push({
+        Title: employeeName,
+        EmployeId: assignedToId,
+        EmployeeID: employeeId,
+        AssetName: assetName,
+        SerialNumber: serialNumber,
+        Priority: priority,
+        RequestedDate: requestedDate,
+        ReasonforRequest: reason,
+        AssignedDate: assignedDate
+      });
+    }
+
+    // Fallback 4: Title = Assignment of Asset, Employe = employeeName, EmployeeID = employeeId
+    mappingPayloadsToTry.push({
+      Title: `Assignment of ${assetName}`,
+      Employe: employeeName,
+      EmployeeID: employeeId,
+      AssetName: assetName,
+      SerialNumber: serialNumber,
+      Priority: priority,
+      RequestedDate: requestedDate,
+      ReasonforRequest: reason,
+      AssignedDate: assignedDate
+    });
+
+    // Fallback 5: Title = Assignment of Asset, EmployeId = assignedToId, EmployeeID = employeeId
+    if (assignedToId !== null) {
+      mappingPayloadsToTry.push({
+        Title: `Assignment of ${assetName}`,
+        EmployeId: assignedToId,
+        EmployeeID: employeeId,
+        AssetName: assetName,
+        SerialNumber: serialNumber,
+        Priority: priority,
+        RequestedDate: requestedDate,
+        ReasonforRequest: reason,
+        AssignedDate: assignedDate
+      });
+    }
+
+    let mappingSuccess = false;
+    let mappingLastErr: any;
+    for (const p of mappingPayloadsToTry) {
+      try {
+        await mappingList.items.add(p);
+        mappingSuccess = true;
+        console.log(`Successfully added mapping record for ${employeeName}`);
+        break;
+      } catch (err) {
+        mappingLastErr = err;
+      }
+    }
+
+    if (!mappingSuccess) {
+      console.warn(`Failed to write mapping record for ${employeeName} to Mapping List.`, mappingLastErr);
+    }
+  }
+
   public static async assignAssetsToEmployee(
     assetIds: string[], 
     employeeName: string, 
@@ -1287,136 +1560,17 @@ export class InventoryService {
       // 5. Update Mapping List
       try {
         await InventoryService._ensureMappingListFields();
-        const mappingList = await InventoryService.getMappingList();
-        const mappingFields: any[] = await mappingList.fields.select("InternalName", "Title", "TypeAsString")();
-
-        const findMappingField = (searchStr: string, fallback: string): string => {
-          let field = mappingFields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase());
-          if (field) return field.InternalName;
-          
-          field = mappingFields.find((f: any) => f.Title.toLowerCase() === searchStr.toLowerCase());
-          if (field) return field.InternalName;
-
-          const normalizedSearch = searchStr.toLowerCase().replace(/[^a-z0-9]/g, '');
-          field = mappingFields.find((f: any) => f.Title.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedSearch);
-          if (field) return field.InternalName;
-
-          field = mappingFields.find((f: any) => f.Title.toLowerCase().replace(/[^a-z0-9]/g, '').indexOf(normalizedSearch) >= 0);
-          if (field) return field.InternalName;
-
-          return fallback;
-        };
-
-        const employeFieldName = findMappingField("employe", "Employe");
-        const employeeIdFieldName = findMappingField("employeid", "") || findMappingField("employeeid", "EmployeeID");
-        const assetNameFieldName = findMappingField("assetname", "AssetName");
-        const serialNumberFieldName = findMappingField("serialnumber", "SerialNumber");
-        const priorityFieldName = findMappingField("priority", "Priority");
-        const requestedDateFieldName = findMappingField("requesteddate", "RequestedDate");
-        const reasonFieldName = findMappingField("reasonforrequest", "ReasonforRequest");
-        const assignedDateFieldName = findMappingField("assigneddate", "AssignedDate");
-
-        const employeFieldObj = mappingFields.find((f: any) => f.InternalName === employeFieldName);
-        const isEmployePerson = employeFieldObj && (employeFieldObj.TypeAsString === "User" || employeFieldObj.TypeAsString === "UserMulti");
-
-        const dynamicMappingPayload: any = {};
-        if (employeFieldName === "Title") {
-          dynamicMappingPayload["Title"] = employeeName;
-        } else {
-          dynamicMappingPayload["Title"] = `Assignment of ${assetName}`;
-          if (isEmployePerson && assignedToId !== null) {
-            dynamicMappingPayload[`${employeFieldName}Id`] = assignedToId;
-          } else {
-            dynamicMappingPayload[employeFieldName] = employeeName;
-          }
-        }
-
-        dynamicMappingPayload[employeeIdFieldName] = employeeId || "";
-        dynamicMappingPayload[assetNameFieldName] = assetName;
-        dynamicMappingPayload[serialNumberFieldName] = serialNumber;
-        dynamicMappingPayload[priorityFieldName] = priority;
-        dynamicMappingPayload[requestedDateFieldName] = finalRequestedDate;
-        dynamicMappingPayload[reasonFieldName] = reason;
-        dynamicMappingPayload[assignedDateFieldName] = finalAssignedDate;
-
-        const mappingPayloadsToTry: any[] = [];
-        mappingPayloadsToTry.push(dynamicMappingPayload);
-
-        if (assignedToId !== null) {
-          mappingPayloadsToTry.push({
-            Title: employeeName,
-            EmployeId: assignedToId,
-            EmployeeID: employeeId || "",
-            AssetName: assetName,
-            SerialNumber: serialNumber,
-            Priority: priority,
-            RequestedDate: finalRequestedDate,
-            ReasonforRequest: reason,
-            AssignedDate: finalAssignedDate
-          });
-          mappingPayloadsToTry.push({
-            Title: `Assignment of ${assetName}`,
-            EmployeId: assignedToId,
-            EmployeeID: employeeId || "",
-            AssetName: assetName,
-            SerialNumber: serialNumber,
-            Priority: priority,
-            RequestedDate: finalRequestedDate,
-            ReasonforRequest: reason,
-            AssignedDate: finalAssignedDate
-          });
-          mappingPayloadsToTry.push({
-            Title: `Assignment of ${assetName}`,
-            EmployeId: assignedToId,
-            Employee_x0020_ID: employeeId || "",
-            Asset_x0020_Name: assetName,
-            Serial_x0020_Number: serialNumber,
-            Priority: priority,
-            Requested_x0020_Date: finalRequestedDate,
-            Reason_x0020_for_x0020_Request: reason,
-            AssignedDate: finalAssignedDate
-          });
-        }
-
-        mappingPayloadsToTry.push({
-          Title: employeeName,
-          Employe: employeeName,
-          EmployeeID: employeeId || "",
-          AssetName: assetName,
-          SerialNumber: serialNumber,
-          Priority: priority,
-          RequestedDate: finalRequestedDate,
-          ReasonforRequest: reason,
-          AssignedDate: finalAssignedDate
-        });
-        mappingPayloadsToTry.push({
-          Title: `Assignment of ${assetName}`,
-          Employe: employeeName,
-          EmployeeID: employeeId || "",
-          AssetName: assetName,
-          SerialNumber: serialNumber,
-          Priority: priority,
-          RequestedDate: finalRequestedDate,
-          ReasonforRequest: reason,
-          AssignedDate: finalAssignedDate
-        });
-
-        let mappingSuccess = false;
-        let mappingLastErr: any;
-        for (const p of mappingPayloadsToTry) {
-          try {
-            await mappingList.items.add(p);
-            mappingSuccess = true;
-            console.log("Successfully added assignment record to Mapping List");
-            break;
-          } catch (err) {
-            mappingLastErr = err;
-          }
-        }
-
-        if (!mappingSuccess) {
-          console.warn("Failed to write to Mapping List after trying all payloads. Continuing.", mappingLastErr);
-        }
+        await InventoryService._writeToMappingList(
+          employeeName,
+          employeeId || "",
+          employeeEmail,
+          assetName,
+          serialNumber,
+          priority,
+          finalRequestedDate,
+          reason,
+          finalAssignedDate
+        );
       } catch (err) {
         console.warn("Failed to execute Mapping List update logic. Continuing.", err);
       }
@@ -1486,17 +1640,7 @@ export class InventoryService {
         return fallback;
       };
 
-      const employeFieldName = findMappingField("employe", "Employe");
-      const employeeIdFieldName = findMappingField("employeid", "") || findMappingField("employeeid", "EmployeeID");
-      const assetNameFieldName = findMappingField("assetname", "AssetName");
       const serialNumberFieldName = findMappingField("serialnumber", "SerialNumber");
-      const priorityFieldName = findMappingField("priority", "Priority");
-      const requestedDateFieldName = findMappingField("requesteddate", "RequestedDate");
-      const reasonFieldName = findMappingField("reasonforrequest", "ReasonforRequest");
-      const assignedDateFieldName = findMappingField("assigneddate", "AssignedDate");
-
-      const employeFieldObj = mappingFields.find((f: any) => f.InternalName === employeFieldName);
-      const isEmployePerson = employeFieldObj && (employeFieldObj.TypeAsString === "User" || employeFieldObj.TypeAsString === "UserMulti");
 
       for (const asset of assignedItems) {
         // Check if this asset is already in the Mapping List
@@ -1517,18 +1661,6 @@ export class InventoryService {
         const employeeName = employee ? employee.name : assetAssignedTo;
         const employeeId = employee ? employee.id : "";
         const employeeEmail = employee ? employee.email : "";
-
-        // Resolve Person ID if the field is a Person field
-        let assignedToId: number | null = null;
-        if (isEmployePerson && employeeEmail) {
-          try {
-            const sp = getSP();
-            const user: any = await sp.web.ensureUser(employeeEmail);
-            assignedToId = user.data ? user.data.Id : user.Id;
-          } catch (e) {
-            console.warn(`Could not resolve user ${employeeEmail} in SharePoint during sync.`, e);
-          }
-        }
 
         // Find matching request
         let priority = "Medium";
@@ -1586,114 +1718,20 @@ export class InventoryService {
         const assetName = asset.assetName || asset.title || "";
         const serialNumber = asset.serialNumber || "";
 
-        const dynamicMappingPayload: any = {};
-        if (employeFieldName === "Title") {
-          dynamicMappingPayload["Title"] = employeeName;
-        } else {
-          dynamicMappingPayload["Title"] = `Assignment of ${assetName}`;
-          if (isEmployePerson && assignedToId !== null) {
-            dynamicMappingPayload[`${employeFieldName}Id`] = assignedToId;
-          } else {
-            dynamicMappingPayload[employeFieldName] = employeeName;
-          }
-        }
-
-        dynamicMappingPayload[employeeIdFieldName] = employeeId || "";
-        dynamicMappingPayload[assetNameFieldName] = assetName;
-        dynamicMappingPayload[serialNumberFieldName] = serialNumber;
-        dynamicMappingPayload[priorityFieldName] = priority;
-        dynamicMappingPayload[requestedDateFieldName] = finalRequestedDate;
-        dynamicMappingPayload[reasonFieldName] = reason;
-        dynamicMappingPayload[assignedDateFieldName] = finalAssignedDate;
-
-        const mappingPayloadsToTry: any[] = [];
-        mappingPayloadsToTry.push(dynamicMappingPayload);
-
-        if (assignedToId !== null) {
-          mappingPayloadsToTry.push({
-            Title: employeeName,
-            EmployeId: assignedToId,
-            EmployeeID: employeeId || "",
-            AssetName: assetName,
-            SerialNumber: serialNumber,
-            Priority: priority,
-            RequestedDate: finalRequestedDate,
-            ReasonforRequest: reason,
-            AssignedDate: finalAssignedDate
-          });
-          mappingPayloadsToTry.push({
-            Title: `Assignment of ${assetName}`,
-            EmployeId: assignedToId,
-            EmployeeID: employeeId || "",
-            AssetName: assetName,
-            SerialNumber: serialNumber,
-            Priority: priority,
-            RequestedDate: finalRequestedDate,
-            ReasonforRequest: reason,
-            AssignedDate: finalAssignedDate
-          });
-          mappingPayloadsToTry.push({
-            Title: `Assignment of ${assetName}`,
-            EmployeId: assignedToId,
-            Employee_x0020_ID: employeeId || "",
-            Asset_x0020_Name: assetName,
-            Serial_x0020_Number: serialNumber,
-            Priority: priority,
-            Requested_x0020_Date: finalRequestedDate,
-            Reason_x0020_for_x0020_Request: reason,
-            AssignedDate: finalAssignedDate
-          });
-        }
-
-        mappingPayloadsToTry.push({
-          Title: employeeName,
-          Employe: employeeName,
-          EmployeeID: employeeId || "",
-          AssetName: assetName,
-          SerialNumber: serialNumber,
-          Priority: priority,
-          RequestedDate: finalRequestedDate,
-          ReasonforRequest: reason,
-          AssignedDate: finalAssignedDate
-        });
-        mappingPayloadsToTry.push({
-          Title: `Assignment of ${assetName}`,
-          Employe: employeeName,
-          EmployeeID: employeeId || "",
-          AssetName: assetName,
-          SerialNumber: serialNumber,
-          Priority: priority,
-          RequestedDate: finalRequestedDate,
-          ReasonforRequest: reason,
-          AssignedDate: finalAssignedDate
-        });
-        mappingPayloadsToTry.push({
-          Title: `Assignment of ${assetName}`,
-          Employee: employeeName,
-          EmployeeID: employeeId || "",
-          AssetName: assetName,
-          SerialNumber: serialNumber,
-          Priority: priority,
-          RequestedDate: finalRequestedDate,
-          ReasonforRequest: reason,
-          AssignedDate: finalAssignedDate
-        });
-
-        let mappingSuccess = false;
-        let mappingLastErr: any;
-        for (const p of mappingPayloadsToTry) {
-          try {
-            await mappingList.items.add(p);
-            mappingSuccess = true;
-            console.log(`Successfully synced record to Mapping List for ${employeeName}`);
-            break;
-          } catch (err) {
-            mappingLastErr = err;
-          }
-        }
-
-        if (!mappingSuccess) {
-          console.warn("Failed to write synced record to Mapping List. Continuing.", mappingLastErr);
+        try {
+          await InventoryService._writeToMappingList(
+            employeeName,
+            employeeId,
+            employeeEmail,
+            assetName,
+            serialNumber,
+            priority,
+            finalRequestedDate,
+            reason,
+            finalAssignedDate
+          );
+        } catch (err) {
+          console.warn(`Failed to write synced record for ${employeeName} to Mapping List.`, err);
         }
       }
     } catch (e) {
