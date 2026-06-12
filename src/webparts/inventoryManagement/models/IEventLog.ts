@@ -1,7 +1,7 @@
 export interface IEventLog {
   id: string;
   title: string;
-  action: 'Create' | 'Update' | 'Delete';
+  action: string;
   entityType: 'Asset' | 'Request';
   entityId: string;
   assetName?: string;

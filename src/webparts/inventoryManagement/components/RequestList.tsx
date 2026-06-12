@@ -25,6 +25,14 @@ export interface IRequestListProps {
 export const RequestList: React.FC<IRequestListProps> = (props) => {
   const columns: IColumn[] = [
     {
+      key: 'columnRequestKey',
+      name: 'Request ID',
+      fieldName: 'requestKey',
+      minWidth: 90,
+      maxWidth: 125,
+      isResizable: true
+    },
+    {
       key: 'columnEmployeeName',
       name: 'Employee Name',
       fieldName: 'requesterName',
@@ -179,7 +187,6 @@ export const RequestList: React.FC<IRequestListProps> = (props) => {
         );
       }
     } as IColumn] : []),
-    { key: 'column7', name: 'Reason', fieldName: 'reason', minWidth: 150, maxWidth: 250, isResizable: true },
     ...(props.showResponseColumns ? [
       { key: 'columnManagerResponse', name: 'Manager Response', fieldName: 'managerResponse', minWidth: 170, maxWidth: 240, isResizable: true },
       {

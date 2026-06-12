@@ -11,7 +11,7 @@ import { getSP } from '../pnpjsConfig';
 import { AssetForm } from './AssetForm';
 import { RequestForm } from './RequestForm';
 import { EventStream } from './EventStream';
-import { PrimaryButton, Pivot, PivotItem, TextField, DetailsList, DetailsListLayoutMode, SelectionMode, IColumn, DetailsRow } from '@fluentui/react';
+import { PrimaryButton, Pivot, PivotItem, TextField, DetailsList, DetailsListLayoutMode, SelectionMode, IColumn, DetailsRow, Panel, PanelType, MessageBar, MessageBarType, ProgressIndicator, Icon, Stack } from '@fluentui/react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -61,6 +61,8 @@ export interface IInventoryManagementState {
   selectedTabKey?: string;
   readNotificationIds: string[];
   clearedNotificationIds: string[];
+  selectedNotification?: INotification;
+  isNotificationDetailsOpen: boolean;
 }
 
 export default class InventoryManagement extends React.Component<IInventoryManagementProps, IInventoryManagementState> {
@@ -268,7 +270,12 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
   private _handleNotificationAction = (actionLink: string, notificationId: string): void => {
     this._markNotificationAsRead(notificationId);
-    this.setState({ selectedTabKey: actionLink });
+    const notifications = this._getNotifications();
+    const selectedNotification = notifications.find(n => n.id === notificationId);
+    this.setState({ 
+      selectedNotification,
+      isNotificationDetailsOpen: true
+    });
   };
 
   constructor(props: IInventoryManagementProps) {
@@ -300,7 +307,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       errorMessage: undefined,
       selectedTabKey: 'Dashboard',
       readNotificationIds: readIds,
-      clearedNotificationIds: clearedIds
+      clearedNotificationIds: clearedIds,
+      selectedNotification: undefined,
+      isNotificationDetailsOpen: false
     };
   }
 
@@ -455,7 +464,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     }
   };
 
-  private _onSubmitRequest = async (requestData: Omit<IRequest, 'id' | 'requestKey' | 'requestDate' | 'status'>): Promise<void> => {
+  private _onSubmitRequest = async (requestData: Omit<IRequest, 'id' | 'requestKey' | 'status'>): Promise<void> => {
     try {
       const requesterEmployee = EMPLOYEES.find(e => e.name.toLowerCase() === requestData.requesterName.toLowerCase());
       const requesterRole = requesterEmployee ? requesterEmployee.jobTitle : 'Inventory Employee';
@@ -474,7 +483,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         quantity: requestData.quantity || 1,
         status: initialStatus,
         assetStatus: 'Pending',
-        requestDate: new Date().toISOString().split('T')[0],
+        requestDate: requestData.requestDate || new Date().toISOString().split('T')[0],
         reason: requestData.reason || ""
       };
 
@@ -582,6 +591,315 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     } finally {
       this.setState({ isTrackingActionInProgress: false });
     }
+  };
+
+  private _exportWarrantyReportToExcel = (): void => {
+    const { items } = this.state;
+    const headers = ["Asset Name", "Asset Type", "Status", "Purchase Date", "Warranty Expiry Date"];
+    const csvRows = [headers.join(",")];
+
+    items.forEach(item => {
+      const name = (item.assetName || item.title || "").replace(/"/g, '""');
+      const type = (item.assetType || "").replace(/"/g, '""');
+      const status = (item.status || "").replace(/"/g, '""');
+      const purchaseDate = (item.purchaseDate || "").replace(/"/g, '""');
+      const warrantyExpiry = (item.warrantyExpiry || "N/A").replace(/"/g, '""');
+      
+      const row = [
+        `"${name}"`,
+        `"${type}"`,
+        `"${status}"`,
+        `"${purchaseDate}"`,
+        `"${warrantyExpiry}"`
+      ];
+      csvRows.push(row.join(","));
+    });
+
+    const csvContent = "\uFEFF" + csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Warranty_Expiry_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  private _renderRequestAnalysis = (request: IRequest): React.ReactNode => {
+    const reqAssetTitle = request.assetTitle || "";
+    const inStockItems = this.state.items.filter(item => 
+      (item.assetType || '').toLowerCase() === reqAssetTitle.toLowerCase() && 
+      (item.status === 'In Stock' || item.status === 'Yes' || (item.status || '').toLowerCase() === 'in stock')
+    );
+    const inStockCount = inStockItems.length;
+    const isSufficient = inStockCount >= request.quantity;
+
+    let progressPercent = 0.33;
+    let currentStepText = "Submitted & Pending Approval";
+    if (request.status === 'Approved') {
+      progressPercent = 0.66;
+      currentStepText = "Manager Approved - Awaiting Asset Assignment";
+      if (request.assetStatus === 'Approved') {
+        progressPercent = 1.0;
+        currentStepText = "Completed & Asset Assigned";
+      }
+    } else if (request.status === 'Declined') {
+      progressPercent = 1.0;
+      currentStepText = "Declined by Manager";
+    }
+
+    return (
+      <Stack tokens={{ childrenGap: 20 }}>
+        {/* Request Overview */}
+        <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <h4 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>Request Overview</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.88rem' }}>
+            <div><span style={{ color: '#6b7280' }}>Request Key:</span> <strong style={{ color: '#111827' }}>{request.requestKey}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Requested Asset:</span> <strong style={{ color: '#111827' }}>{request.assetTitle}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Quantity:</span> <strong style={{ color: '#111827' }}>{request.quantity}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Priority:</span> <strong style={{ color: '#111827' }}>{request.priority}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Requester Name:</span> <strong style={{ color: '#111827' }}>{request.requesterName}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Employee ID:</span> <strong style={{ color: '#111827' }}>{request.employeeId || "N/A"}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Request Date:</span> <strong style={{ color: '#111827' }}>{request.requestDate}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Request Status:</span> <strong style={{ color: request.status === 'Approved' ? '#16a34a' : request.status === 'Declined' ? '#dc2626' : '#ea580c' }}>{request.status}</strong></div>
+          </div>
+          {request.reason && (
+            <div style={{ marginTop: '12px', fontSize: '0.88rem', padding: '8px 10px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #f3f4f6' }}>
+              <span style={{ color: '#6b7280', display: 'block', marginBottom: '2px' }}>Reason for Request:</span>
+              <span style={{ color: '#374151' }}>{request.reason}</span>
+            </div>
+          )}
+          {request.managerResponse && (
+            <div style={{ marginTop: '12px', fontSize: '0.88rem', padding: '8px 10px', backgroundColor: '#f0fdf4', borderRadius: '4px', border: '1px solid #dcfce7' }}>
+              <span style={{ color: '#15803d', display: 'block', marginBottom: '2px' }}>Manager Response:</span>
+              <span style={{ color: '#166534' }}>{request.managerResponse}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Detailed Analysis */}
+        <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <h4 style={{ margin: '0 0 12px 0', color: '#1e293b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Icon iconName="BarChart4" style={{ color: '#0078d4' }} /> Detailed Analysis
+          </h4>
+          
+          <Stack tokens={{ childrenGap: 12 }}>
+            {/* Inventory Status Check */}
+            <div>
+              <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '6px' }}>Inventory Availability Check:</span>
+              {isSufficient ? (
+                <MessageBar messageBarType={MessageBarType.success} styles={{ root: { borderRadius: '6px' } }}>
+                  <strong>Inventory Check Passed:</strong> There are currently <strong>{inStockCount}</strong> unit(s) of <strong>{reqAssetTitle}</strong> in stock, which is sufficient to fulfill this request.
+                </MessageBar>
+              ) : (
+                <MessageBar messageBarType={MessageBarType.warning} styles={{ root: { borderRadius: '6px' } }}>
+                  <strong>Inventory Warning:</strong> Only <strong>{inStockCount}</strong> unit(s) of <strong>{reqAssetTitle}</strong> in stock. Procurement is required to fully complete this order.
+                </MessageBar>
+              )}
+            </div>
+
+            {/* Smart recommendation */}
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>Strategic Recommendation:</span>
+              <div style={{ padding: '10px', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', lineHeight: '1.4', color: '#334155' }}>
+                {request.status === 'Pending' ? (
+                  isSufficient ? (
+                    <span><strong>Recommended Action:</strong> Approve the request. Sufficient inventory is available, allowing immediate serial number allocation.</span>
+                  ) : (
+                    <span><strong>Recommended Action:</strong> Hold approval or assign alternate model. Current stock ({inStockCount}) is insufficient. Order replenishment units.</span>
+                  )
+                ) : request.status === 'Approved' && request.assetStatus === 'Pending' ? (
+                  <span><strong>Recommended Action:</strong> Proceed to the <strong>Asset Assignment Queue</strong> tab to allocate one of the <strong>{inStockCount}</strong> available {reqAssetTitle}s to {request.requesterName}.</span>
+                ) : request.status === 'Approved' && request.assetStatus === 'Approved' ? (
+                  <span><strong>Lifecycle Complete:</strong> The asset has been successfully allocated. No further manager or admin action is required.</span>
+                ) : (
+                  <span><strong>Closed:</strong> Request has been declined. Fulfilling alternate options or review arguments if appealed.</span>
+                )}
+              </div>
+            </div>
+
+            {/* Lifecycle Timeline Tracker */}
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '6px' }}>Request Lifecycle Stage:</span>
+              <ProgressIndicator 
+                label={currentStepText} 
+                percentComplete={progressPercent} 
+                styles={{ root: { marginTop: '5px' } }}
+              />
+            </div>
+          </Stack>
+        </div>
+      </Stack>
+    );
+  };
+
+  private _renderAssetAnalysis = (asset: IInventoryItem): React.ReactNode => {
+    const purchaseDateVal = asset.purchaseDate ? new Date(asset.purchaseDate) : null;
+    const now = new Date();
+    const ageInMonths = purchaseDateVal 
+      ? Math.round((now.getTime() - purchaseDateVal.getTime()) / (1000 * 60 * 60 * 24 * 30.4)) 
+      : null;
+      
+    const isExpired = asset.warrantyExpiry && new Date(asset.warrantyExpiry) < now;
+    
+    let conditionColor = '#16a34a';
+    let healthRating = "Excellent";
+    let healthIcon = "Heart";
+    if (asset.condition === 'Fair') {
+      conditionColor = '#ea580c';
+      healthRating = "Fair";
+      healthIcon = "IncidentTriangle";
+    } else if (asset.condition === 'Poor' || asset.condition === 'Damaged') {
+      conditionColor = '#dc2626';
+      healthRating = "Critical Needs Replacement";
+      healthIcon = "Warning";
+    }
+
+    return (
+      <Stack tokens={{ childrenGap: 20 }}>
+        {/* Asset Overview */}
+        <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <h4 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>Asset Specifications</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.88rem' }}>
+            <div><span style={{ color: '#6b7280' }}>Asset Name:</span> <strong style={{ color: '#111827' }}>{asset.assetName || asset.title}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Serial Number:</span> <strong style={{ color: '#111827' }}>{asset.serialNumber}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Asset Type:</span> <strong style={{ color: '#111827' }}>{asset.assetType}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Current Status:</span> <strong style={{ color: '#111827' }}>{asset.status}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Condition:</span> <strong style={{ color: conditionColor }}>{asset.condition || "New"}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Vendor:</span> <strong style={{ color: '#111827' }}>{asset.vendor || "N/A"}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Purchase Date:</span> <strong style={{ color: '#111827' }}>{asset.purchaseDate || "N/A"}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Warranty Expiry:</span> <strong style={{ color: isExpired ? '#dc2626' : '#111827' }}>{asset.warrantyExpiry || "N/A"}</strong></div>
+          </div>
+          {asset.note && (
+            <div style={{ marginTop: '12px', fontSize: '0.88rem', padding: '8px 10px', backgroundColor: '#f9fafb', borderRadius: '4px', border: '1px solid #f3f4f6' }}>
+              <span style={{ color: '#6b7280', display: 'block', marginBottom: '2px' }}>Asset Notes:</span>
+              <span style={{ color: '#374151' }}>{asset.note}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Detailed Analysis */}
+        <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <h4 style={{ margin: '0 0 12px 0', color: '#1e293b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Icon iconName="Heart" style={{ color: conditionColor }} /> Health & Depreciation Analysis
+          </h4>
+          
+          <Stack tokens={{ childrenGap: 12 }}>
+            {/* Age evaluation */}
+            {ageInMonths !== null && (
+              <div>
+                <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '4px' }}>Asset Age:</span>
+                <span style={{ fontSize: '0.9rem', color: '#334155' }}>
+                  This asset is <strong>{ageInMonths}</strong> month(s) old ({Math.round(ageInMonths / 12 * 10) / 10} year(s)). Standard lifecycle depreciation period is 36 months (3 years).
+                </span>
+              </div>
+            )}
+
+            {/* Warranty alert */}
+            <div>
+              <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '6px' }}>Warranty Expiry Evaluation:</span>
+              {asset.warrantyExpiry ? (
+                isExpired ? (
+                  <MessageBar messageBarType={MessageBarType.error} styles={{ root: { borderRadius: '6px' } }}>
+                    <strong>Warranty Expired:</strong> Coverage ended on {asset.warrantyExpiry}. Any future repair operations will incur full direct business costs.
+                  </MessageBar>
+                ) : (
+                  <MessageBar messageBarType={MessageBarType.success} styles={{ root: { borderRadius: '6px' } }}>
+                    <strong>Warranty Active:</strong> Covered under manufacturer protection until {asset.warrantyExpiry}.
+                  </MessageBar>
+                )
+              ) : (
+                <MessageBar messageBarType={MessageBarType.info} styles={{ root: { borderRadius: '6px' } }}>
+                  <strong>Warranty Unknown:</strong> No warranty expiration date has been registered for this asset.
+                </MessageBar>
+              )}
+            </div>
+
+            {/* Condition check */}
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+              <span style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '6px' }}>Asset Physical Health:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#334155' }}>
+                <Icon iconName={healthIcon} style={{ fontSize: '18px', color: conditionColor }} />
+                <span>Health Classification: <strong style={{ color: conditionColor }}>{healthRating}</strong></span>
+              </div>
+              {(asset.condition === 'Poor' || asset.condition === 'Damaged') && (
+                <p style={{ margin: '8px 0 0 0', fontSize: '0.8rem', color: '#b91c1c', fontWeight: 'bold' }}>
+                  Critical Action Recommendation: It is highly advised to retire this asset and issue a replacement request.
+                </p>
+              )}
+            </div>
+          </Stack>
+        </div>
+      </Stack>
+    );
+  };
+
+  private _renderNotificationDetailsPanel = (): React.ReactNode => {
+    const { selectedNotification, isNotificationDetailsOpen, items, requests } = this.state;
+    if (!selectedNotification) return null;
+
+    const notifId = selectedNotification.id || "";
+    let associatedRequest: IRequest | undefined;
+    let associatedAsset: IInventoryItem | undefined;
+
+    if (notifId.startsWith("req-pending-")) {
+      const id = notifId.replace("req-pending-", "");
+      associatedRequest = requests.find(r => r.id === id);
+    } else if (notifId.startsWith("req-resolved-")) {
+      const parts = notifId.split("-");
+      const id = parts[2];
+      associatedRequest = requests.find(r => r.id === id);
+    } else if (notifId.startsWith("req-assign-admin-")) {
+      const id = notifId.replace("req-assign-admin-", "");
+      associatedRequest = requests.find(r => r.id === id);
+    } else if (notifId.startsWith("asset-assigned-admin-")) {
+      const id = notifId.replace("asset-assigned-admin-", "");
+      associatedAsset = items.find(a => a.id === id);
+    } else if (notifId.startsWith("asset-assigned-")) {
+      const id = notifId.replace("asset-assigned-", "");
+      associatedAsset = items.find(a => a.id === id);
+    } else if (notifId.startsWith("asset-maintenance-")) {
+      const parts = notifId.replace("asset-maintenance-", "").split("-");
+      const id = parts[0];
+      associatedAsset = items.find(a => a.id === id);
+    }
+
+    return (
+      <Panel
+        isOpen={isNotificationDetailsOpen}
+        onDismiss={() => this.setState({ isNotificationDetailsOpen: false })}
+        type={PanelType.medium}
+        headerText={selectedNotification.title}
+        closeButtonAriaLabel="Close"
+      >
+        <div style={{ marginTop: '10px' }}>
+          <p style={{ color: '#6b7280', fontSize: '0.88rem', margin: '0 0 20px 0' }}>
+            <strong>Received:</strong> {selectedNotification.timestamp}
+          </p>
+          
+          <div style={{ padding: '12px 15px', backgroundColor: '#f1f5f9', borderRadius: '6px', marginBottom: '20px', borderLeft: '4px solid #64748b' }}>
+            <p style={{ margin: 0, fontSize: '0.92rem', color: '#334155', lineHeight: '1.5' }}>
+              {selectedNotification.message}
+            </p>
+          </div>
+
+          {associatedRequest && this._renderRequestAnalysis(associatedRequest)}
+          {associatedAsset && this._renderAssetAnalysis(associatedAsset)}
+
+          {!associatedRequest && !associatedAsset && (
+            <div>
+              <h4 style={{ color: '#111827', borderBottom: '1px solid #e5e7eb', paddingBottom: '8px', marginBottom: '12px' }}>System Alert Analysis</h4>
+              <MessageBar messageBarType={MessageBarType.info}>
+                This is a general system notification. There is no direct database link to an active request or asset.
+              </MessageBar>
+            </div>
+          )}
+        </div>
+      </Panel>
+    );
   };
 
   public render(): React.ReactElement<IInventoryManagementProps> {
@@ -888,7 +1206,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                   </div>
                 </PivotItem>
               )}
-              {(isAdmin || isManager) && (
+              {isAdmin && (
                 <PivotItem headerText="Event Stream" itemIcon="ActivityFeed" itemKey="EventStream">
                   <EventStream
                     logs={auditLogs}
@@ -1112,7 +1430,19 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     })()}
 
                     <div style={{ marginTop: '20px', padding: '15px', backgroundColor: 'var(--surface-color, #ffffff)', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                      <h4 style={{ marginBottom: '10px' }}>Warranty Expiry Report</h4>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                        <h4 style={{ margin: 0 }}>Warranty Expiry Report</h4>
+                        <PrimaryButton
+                          text="Export to Excel"
+                          iconProps={{ iconName: 'ExcelDocument' }}
+                          onClick={this._exportWarrantyReportToExcel}
+                          styles={{ 
+                            root: { backgroundColor: '#107c41', borderColor: '#107c41', color: '#ffffff' }, 
+                            rootHovered: { backgroundColor: '#0b592e', borderColor: '#0b592e', color: '#ffffff' },
+                            rootPressed: { backgroundColor: '#0a522a', borderColor: '#0a522a', color: '#ffffff' }
+                          }}
+                        />
+                      </div>
                       <div style={{ marginBottom: '15px', display: 'flex', gap: '20px' }}>
                         <div style={{ padding: '10px 15px', backgroundColor: '#f3f4f6', borderRadius: '6px' }}>
                           <span style={{ display: 'block', fontSize: '0.85rem', color: '#4b5563', marginBottom: '4px' }}>Total Assets Count</span>
@@ -1251,6 +1581,8 @@ export default class InventoryManagement extends React.Component<IInventoryManag
             onSubmitRequest={this._onSubmitRequest}
           />
         )}
+
+        {this._renderNotificationDetailsPanel()}
       </section>
     );
   }

@@ -24,7 +24,7 @@ export interface IRequestFormProps {
   employees: IEmployee[];
   currentUserRole: UserRole;
   currentUserName: string;
-  onSubmitRequest: (request: Omit<IRequest, 'id' | 'requestKey' | 'requestDate' | 'status'>) => void;
+  onSubmitRequest: (request: Omit<IRequest, 'id' | 'requestKey' | 'status'>) => void;
 }
 
 const stackTokens: IStackTokens = { childrenGap: 15 };
@@ -36,6 +36,13 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
   const [priority, setPriority] = React.useState<'High' | 'Medium' | 'Low'>('Medium');
   const [quantity, setQuantity] = React.useState<number>(1);
   const [reason, setReason] = React.useState('');
+  const [requestDate, setRequestDate] = React.useState<string>(new Date().toISOString().split('T')[0]);
+
+  React.useEffect(() => {
+    if (props.isOpen) {
+      setRequestDate(new Date().toISOString().split('T')[0]);
+    }
+  }, [props.isOpen]);
 
   const isAdmin = props.currentUserRole === 'Admin';
   const isManager = props.currentUserRole === 'Inventory Manager';
@@ -117,7 +124,8 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
         assetTitle: selectedAssetType,
         priority: priority,
         quantity,
-        reason
+        reason,
+        requestDate
       } as any);
 
       setSelectedRequesterId(undefined);
@@ -126,6 +134,7 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
       setPriority('Medium');
       setQuantity(1);
       setReason('');
+      setRequestDate(new Date().toISOString().split('T')[0]);
       props.onClose();
     }
   };
@@ -163,6 +172,13 @@ export const RequestForm: React.FC<IRequestFormProps> = (props) => {
           label="Employee ID"
           value={employeeId}
           onChange={(_, val) => setEmployeeId(val || '')}
+          required
+        />
+        <TextField
+          label="Requested Date"
+          type="date"
+          value={requestDate}
+          onChange={(_, val) => setRequestDate(val || '')}
           required
         />
         <Dropdown

@@ -13,7 +13,7 @@ export class InventoryService {
   private static readonly REQUEST_KEY_INTERNAL_NAME = "RequestKey";
   private static readonly ASSET_STATUS_INTERNAL_NAME = "AssetStatus";
   private static readonly MAPPING_LIST_NAME = "Mapping List";
-  
+
   private static _requestWorkflowFieldsEnsured = false;
   private static _resolvedListName: string | null = null;
   private static _resolvedRequestListName: string | null = null;
@@ -459,22 +459,22 @@ export class InventoryService {
             if (Array.isArray(assignedField)) return assignedField.map((a: any) => a.Title).join(', ');
             if (assignedField.Title) return assignedField.Title;
           }
-          
+
           // Fallback: extract assignee name from Note or Status if the primary field is empty
           const noteText = item[noteKey] || item.Note || item.Notes || "";
           const statusText = item[statusKey] || item.Status || item.AssetStatus || "";
-          
+
           const extractFromText = (text: string): string => {
             const match = /assigned to:\s*([^;\n\r]+)/i.exec(text);
             return match ? match[1].trim() : "";
           };
-          
+
           const fromNote = extractFromText(noteText);
           if (fromNote) return fromNote;
-          
+
           const fromStatus = extractFromText(statusText);
           if (fromStatus) return fromStatus;
-          
+
           return "";
         })();
 
@@ -632,7 +632,7 @@ export class InventoryService {
     }
   }
 
-  public static async addRequest(request: Omit<IRequest, 'id' | 'requestKey' | 'status' | 'requestDate'> & { status?: string }, userDisplayName: string = "Unknown"): Promise<void> {
+  public static async addRequest(request: Omit<IRequest, 'id' | 'requestKey' | 'status'> & { status?: string }, userDisplayName: string = "Unknown"): Promise<void> {
     const list = await InventoryService.getRequestList();
     await this._ensureRequestWorkflowFields();
 
@@ -649,7 +649,7 @@ export class InventoryService {
     let dynamicPayload: any = null;
     try {
       const fields: any[] = await list.fields.select("InternalName", "Title", "TypeAsString", "Required")();
-      
+
       const findField = (searchStr: string) => {
         let field = fields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase());
         if (field) return field;
@@ -670,6 +670,7 @@ export class InventoryService {
       });
       const employeeIdField = findField("employeeid") || findField("employee id") || findField("employee_x0020_id");
       const priorityField = findField("priority");
+      const requestDateField = findField("requestdate") || findField("request date") || findField("requesteddate") || findField("requested date");
 
       dynamicPayload = {
         Title: `Request for ${request.assetTitle}`
@@ -713,6 +714,9 @@ export class InventoryService {
       if (priorityField) {
         dynamicPayload[priorityField.InternalName] = (request as any).priority || "Medium";
       }
+      if (requestDateField) {
+        dynamicPayload[requestDateField.InternalName] = request.requestDate || new Date().toISOString().split('T')[0];
+      }
     } catch (e) {
       console.warn("Failed to generate dynamic payload from schema, will use hardcoded candidates", e);
     }
@@ -729,7 +733,9 @@ export class InventoryService {
           Asset_x0020_type: request.assetTitle,
           Quantity: request.quantity,
           Reason_x0020_for_x0020_Request: request.reason || "",
-          RequestStatus: initialStatus
+          RequestStatus: initialStatus,
+          RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+          Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
         },
         {
           Title: `Request for ${request.assetTitle}`,
@@ -739,7 +745,9 @@ export class InventoryService {
           Assettype: request.assetTitle,
           Quantity: request.quantity,
           ReasonforRequest: request.reason || "",
-          RequestStatus: initialStatus
+          RequestStatus: initialStatus,
+          RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+          Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
         },
         {
           Title: `Request for ${request.assetTitle}`,
@@ -749,7 +757,9 @@ export class InventoryService {
           Asset_x0020_type: request.assetTitle,
           Quantity: request.quantity,
           Reason_x0020_for_x0020_Request: request.reason || "",
-          RequestStatus: initialStatus
+          RequestStatus: initialStatus,
+          RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+          Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
         },
         {
           Title: `Request for ${request.assetTitle}`,
@@ -759,7 +769,9 @@ export class InventoryService {
           Assettype: request.assetTitle,
           Quantity: request.quantity,
           ReasonforRequest: request.reason || "",
-          RequestStatus: initialStatus
+          RequestStatus: initialStatus,
+          RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+          Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
         }
       ] : []),
       // 2. User's specific columns (Employee/Requester as plain Text field)
@@ -771,7 +783,9 @@ export class InventoryService {
         Asset_x0020_type: request.assetTitle,
         Quantity: request.quantity,
         Reason_x0020_for_x0020_Request: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       {
         Title: `Request for ${request.assetTitle}`,
@@ -781,7 +795,9 @@ export class InventoryService {
         Assettype: request.assetTitle,
         Quantity: request.quantity,
         ReasonforRequest: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       {
         Title: `Request for ${request.assetTitle}`,
@@ -791,7 +807,9 @@ export class InventoryService {
         Asset_x0020_type: request.assetTitle,
         Quantity: request.quantity,
         Reason_x0020_for_x0020_Request: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       {
         Title: `Request for ${request.assetTitle}`,
@@ -801,7 +819,9 @@ export class InventoryService {
         Assettype: request.assetTitle,
         Quantity: request.quantity,
         ReasonforRequest: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       // 3. Fallbacks
       {
@@ -812,7 +832,9 @@ export class InventoryService {
         SelectAsset: request.assetTitle,
         Quantity: request.quantity,
         ReasonforRequest: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       {
         Title: `Request for ${request.assetTitle}`,
@@ -822,7 +844,9 @@ export class InventoryService {
         Select_x0020_Asset: request.assetTitle,
         Quantity: request.quantity,
         Reason_x0020_for_x0020_Request: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       },
       {
         Title: `Request for ${request.assetTitle}`,
@@ -831,7 +855,9 @@ export class InventoryService {
         Priority: (request as any).priority || "Medium",
         Quantity: request.quantity,
         ReasonforRequest: request.reason || "",
-        RequestStatus: initialStatus
+        RequestStatus: initialStatus,
+        RequestDate: request.requestDate || new Date().toISOString().split('T')[0],
+        Request_x0020_Date: request.requestDate || new Date().toISOString().split('T')[0]
       }
     ];
 
@@ -904,7 +930,7 @@ export class InventoryService {
     try {
       const list = await InventoryService.getInventoryList();
       await list.items.getById(id).delete();
-      
+
       // Log the event
       await this.addAuditLog({
         title: `Deleted Asset: ${itemTitle}`,
@@ -947,14 +973,15 @@ export class InventoryService {
 
       const employeeIdKey = findFieldInternalName("employeeid", "EmployeeID");
       const priorityKey = findFieldInternalName("priority", "Priority");
+      const requestDateKey = findFieldInternalName("requestdate", "RequestDate");
 
       return items.map((item: any) => {
         const rawStatus = item[statusKey] || item.Status || 'Pending';
         const normalizedStatus = (rawStatus || '').toString().toLowerCase();
         const status =
           (normalizedStatus.includes('approv')) ? 'Approved' :
-          (normalizedStatus.includes('declin') || normalizedStatus.includes('reject')) ? 'Declined' :
-          'Pending';
+            (normalizedStatus.includes('declin') || normalizedStatus.includes('reject')) ? 'Declined' :
+              'Pending';
         const requestKey = this._extractRequestKey(item);
 
         return {
@@ -977,7 +1004,7 @@ export class InventoryService {
           status,
           assetStatus: (item[assetStatusKey] || "Pending").toString().toLowerCase().includes("approv") ? "Approved" : "Pending",
           managerResponse: item[managerCommentKey] || "",
-          requestDate: item.Created ? item.Created.split('T')[0] : new Date().toISOString().split('T')[0],
+          requestDate: item[requestDateKey] ? item[requestDateKey].split('T')[0] : (item.Created ? item.Created.split('T')[0] : new Date().toISOString().split('T')[0]),
           reason: item[reasonKey] || ""
         };
       });
@@ -1084,9 +1111,9 @@ export class InventoryService {
           rejectionReason: status === 'Declined' ? (rejectionReason || "") : "",
           assetAllocation: status === 'Approved'
             ? {
-                assetTitle: item[findKey("assettype") || findKey("selectasset") || findKey("type") || "SelectAsset"] || item.Title || "",
-                quantity: parseInt(item[findKey("quantity") || "Quantity"], 10) || 1
-              }
+              assetTitle: item[findKey("assettype") || findKey("selectasset") || findKey("type") || "SelectAsset"] || item.Title || "",
+              quantity: parseInt(item[findKey("quantity") || "Quantity"], 10) || 1
+            }
             : undefined
         }),
         user: approverName
@@ -1205,7 +1232,7 @@ export class InventoryService {
 
     const employeeIdFieldName = (() => {
       const searchFields = mappingFields.filter((f: any) => f.InternalName !== employeeNameFieldName);
-      
+
       const findFieldInList = (list: any[], search: string): string | null => {
         let f = list.find((x: any) => (x.Title || "").toLowerCase().trim() === search.toLowerCase());
         if (f) return f.InternalName;
@@ -1241,10 +1268,10 @@ export class InventoryService {
       payload["Title"] = employeeName;
     } else {
       payload["Title"] = `Assignment of ${assetName}`;
-      
+
       const empFieldObj = mappingFields.find((f: any) => f.InternalName === employeeNameFieldName);
       const isEmpFieldPerson = empFieldObj && (empFieldObj.TypeAsString === "User" || empFieldObj.TypeAsString === "UserMulti");
-      
+
       if (isEmpFieldPerson && assignedToId !== null) {
         payload[`${employeeNameFieldName}Id`] = assignedToId;
       } else {
@@ -1255,7 +1282,7 @@ export class InventoryService {
     // Map Employee ID to the Employee ID column
     const empIdFieldObj = mappingFields.find((f: any) => f.InternalName === employeeIdFieldName);
     const isEmpIdFieldPerson = empIdFieldObj && (empIdFieldObj.TypeAsString === "User" || empIdFieldObj.TypeAsString === "UserMulti");
-    
+
     if (isEmpIdFieldPerson && assignedToId !== null) {
       payload[`${employeeIdFieldName}Id`] = assignedToId;
     } else {
@@ -1418,16 +1445,16 @@ export class InventoryService {
   }
 
   public static async assignAssetsToEmployee(
-    assetIds: string[], 
-    employeeName: string, 
-    employeeEmail: string, 
+    assetIds: string[],
+    employeeName: string,
+    employeeEmail: string,
     adminName: string,
     employeeId?: string
   ): Promise<void> {
     const sp = getSP();
     const list = await InventoryService.getInventoryList();
     let assignedToId: number | null = null;
-    
+
     // Ensure 'Note' column exists to guarantee we have a place to save the Assignee
     try {
       const fields = await list.fields();
@@ -1463,7 +1490,7 @@ export class InventoryService {
       // 2. Perform the update to InventoryList
       const payloadsToTry: any[] = [];
       const baseStatus = { Status: 'Assigned' };
-      
+
       if (assignedToId !== null) {
         payloadsToTry.push({ ...baseStatus, AssignedToId: { results: [assignedToId] }, Note: `Assigned to: ${employeeName}` });
         payloadsToTry.push({ ...baseStatus, Assigned_x0020_ToId: { results: [assignedToId] }, Note: `Assigned to: ${employeeName}` });
@@ -1477,7 +1504,7 @@ export class InventoryService {
         payloadsToTry.push({ ...baseStatus, AssignedTo: employeeName });
         payloadsToTry.push({ ...baseStatus, Assigned_x0020_To: employeeName });
       }
-      
+
       payloadsToTry.push({ ...baseStatus, Note: `Assigned to: ${employeeName}` });
       payloadsToTry.push({ ...baseStatus, Notes: `Assigned to: ${employeeName}` });
       payloadsToTry.push({ Status: `Assigned to: ${employeeName}`, AssetStatus: `Assigned to: ${employeeName}` }); // Fallback to Status column
@@ -1512,9 +1539,9 @@ export class InventoryService {
         matchingRequest = requests.find(r => {
           const isEmployeeMatch = (employeeId && r.employeeId && r.employeeId.toLowerCase() === employeeId.toLowerCase()) ||
             (employeeName && r.requesterName && r.requesterName.toLowerCase() === employeeName.toLowerCase());
-          
+
           const isAssetMatch = assetType && r.assetTitle && r.assetTitle.toLowerCase() === assetType.toLowerCase();
-          
+
           return isEmployeeMatch && isAssetMatch && r.status === 'Approved' && r.assetStatus === 'Pending';
         });
 
@@ -1598,7 +1625,7 @@ export class InventoryService {
       console.log("Starting Mapping List sync...");
       const list = await InventoryService.getInventoryList();
       const items = await InventoryService.getItems();
-      
+
       // Filter for assigned items matching the 5 active employees
       const assignedItems = items.filter(item => {
         const statusLower = (item.status || '').toLowerCase();
@@ -1626,7 +1653,7 @@ export class InventoryService {
       const findMappingField = (searchStr: string, fallback: string): string => {
         let field = mappingFields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase());
         if (field) return field.InternalName;
-        
+
         field = mappingFields.find((f: any) => f.Title.toLowerCase() === searchStr.toLowerCase());
         if (field) return field.InternalName;
 
@@ -1672,9 +1699,9 @@ export class InventoryService {
         matchingRequest = requests.find(r => {
           const isEmployeeMatch = (employeeId && r.employeeId && r.employeeId.toLowerCase() === employeeId.toLowerCase()) ||
             (employeeName && r.requesterName && r.requesterName.toLowerCase() === employeeName.toLowerCase());
-          
+
           const isAssetMatch = assetType && r.assetTitle && r.assetTitle.toLowerCase() === assetType.toLowerCase();
-          
+
           return isEmployeeMatch && isAssetMatch && r.status === 'Approved';
         });
 
@@ -1741,111 +1768,327 @@ export class InventoryService {
 
   public static async getAuditLogs(): Promise<IEventLog[]> {
     let logs: IEventLog[] = [];
+    const processedEventLogIds = new Set<string>();
+
+    const formatTimestamp = (isoString?: string): string => {
+      if (!isoString) return new Date().toISOString().replace('T', ' ').substring(0, 19);
+      try {
+        const formatted = isoString.replace('T', ' ');
+        if (formatted.indexOf('.') > 0) {
+          return formatted.substring(0, formatted.indexOf('.'));
+        }
+        if (formatted.indexOf('Z') > 0) {
+          return formatted.substring(0, formatted.indexOf('Z'));
+        }
+        return formatted.substring(0, 19);
+      } catch {
+        return isoString.replace('T', ' ').substring(0, 19);
+      }
+    };
+
+    const sp = getSP();
+
+    // 1. Fetch from EventLogList (the audit logging list)
     try {
-      // 1. Fetch from InventoryList
-      try {
-        const list = await InventoryService.getInventoryList();
-        const inventoryItems = await list.items.select("ID", "Title", "AssetName", "Created", "Modified", "Author/Title", "Editor/Title").expand("Author", "Editor")();
-        
-        inventoryItems.forEach((item: any) => {
-           logs.push({
-             id: `asset-create-${item.ID}`,
-             title: `Created Asset: ${item.Title}`,
-             action: 'Create',
-             entityType: 'Asset',
-             entityId: item.ID.toString(),
-             assetName: item.AssetName || item.Title,
-             details: `Asset was added to inventory`,
-             user: item.Author?.Title || "System",
-             timestamp: item.Created ? item.Created.split('T')[0] + ' ' + item.Created.split('T')[1].substring(0, 8) : new Date().toISOString()
-           });
-           
-           if (item.Modified && item.Created && new Date(item.Modified).getTime() - new Date(item.Created).getTime() > 5000) {
-             logs.push({
-               id: `asset-update-${item.ID}-${new Date(item.Modified).getTime()}`,
-               title: `Updated Asset: ${item.Title}`,
-               action: 'Update',
-               entityType: 'Asset',
-               entityId: item.ID.toString(),
-               assetName: item.AssetName || item.Title,
-               details: `Asset details were modified`,
-               user: item.Editor?.Title || "System",
-               timestamp: item.Modified.split('T')[0] + ' ' + item.Modified.split('T')[1].substring(0, 8)
-             });
-           }
+      const eventLogList = sp.web.lists.getByTitle(InventoryService.EVENT_LOG_LIST);
+      const eventItems = await eventLogList.items.select("ID", "Title", "Action", "EntityType", "EntityId", "Details", "User", "Created")();
+
+      eventItems.forEach((item: any) => {
+        let assetName = "";
+        let detailsText = item.Details || "";
+        let actionText = item.Action || "";
+
+        // Parse JSON details if possible
+        if (detailsText.trim().startsWith("{") && detailsText.trim().endsWith("}")) {
+          try {
+            const parsed = JSON.parse(detailsText);
+            assetName = parsed.assetName || parsed.assetTitle || parsed.Title || "";
+            if (parsed.lifecycle) {
+              if (parsed.lifecycle === "DirectAssignment") {
+                detailsText = `Asset assigned to employee`;
+                actionText = "admin assigned";
+              } else if (parsed.lifecycle === "Approved") {
+                detailsText = `Approved request for ${assetName || "Asset"}`;
+                actionText = "manager approved";
+              } else if (parsed.lifecycle === "Rejected" || parsed.lifecycle === "Declined") {
+                detailsText = `Rejected request for ${assetName || "Asset"}`;
+                actionText = "manager rejected";
+              } else if (parsed.lifecycle === "Submitted") {
+                detailsText = `Submitted asset request for ${assetName || "Asset"}`;
+                actionText = "created";
+              }
+            } else if (parsed.assetStatus === "Approved" || parsed.lifecycle === "AssetStatusUpdated") {
+              detailsText = `Assigned ${assetName || "Asset"}`;
+              actionText = "admin assigned";
+            }
+          } catch (e) {
+            // Keep detailsText as string
+          }
+        }
+
+        const titleLower = (item.Title || "").toLowerCase();
+        const actionLower = (item.Action || "").toLowerCase();
+        const detailsLower = (detailsText || "").toLowerCase();
+
+        // High fidelity text mapping
+        if (actionLower === "create") {
+          actionText = "created";
+        } else if (actionLower === "delete") {
+          actionText = "deleted";
+        }
+
+        if (titleLower.includes("directly assigned") || detailsLower.includes("assigned to employee") || detailsLower.includes("assigned to:")) {
+          actionText = "admin assigned";
+          detailsText = "Asset assigned to employee";
+        } else if (titleLower.includes("approved request") || detailsLower.includes("approved request")) {
+          actionText = "manager approved";
+          detailsText = `Approved request for ${assetName || "Asset"}`;
+        } else if (titleLower.includes("rejected request") || detailsLower.includes("rejected request") || titleLower.includes("declined request") || detailsLower.includes("declined request")) {
+          actionText = "manager rejected";
+          detailsText = `Rejected request for ${assetName || "Asset"}`;
+        } else if (titleLower.includes("created request") || detailsLower.includes("submitted asset request")) {
+          actionText = "created";
+          detailsText = `Submitted asset request for ${assetName || "Asset"}`;
+        } else if (titleLower.includes("created asset") || detailsLower.includes("added to inventory")) {
+          actionText = "created";
+          detailsText = "Asset was added to inventory";
+        } else if (titleLower.includes("deleted asset") || detailsLower.includes("retired due to damage")) {
+          actionText = "deleted";
+          detailsText = "Asset retired due to damage";
+        } else if (detailsLower.includes("under investigation") || detailsLower.includes("in progress")) {
+          actionText = "status updated to in progress";
+          detailsText = "Under investigation";
+        } else if (detailsLower.includes("resolved") || detailsLower.includes("replacement cable")) {
+          actionText = "status updated to resolved";
+          detailsText = "Replacement cable sourced";
+        }
+
+        // Try to extract assetName if empty
+        if (!assetName) {
+          if (titleLower.includes("created asset:")) {
+            assetName = item.Title.substring(titleLower.indexOf("created asset:") + 14).trim();
+          } else if (titleLower.includes("updated asset:")) {
+            assetName = item.Title.substring(titleLower.indexOf("updated asset:") + 14).trim();
+          } else if (titleLower.includes("deleted asset:")) {
+            assetName = item.Title.substring(titleLower.indexOf("deleted asset:") + 14).trim();
+          } else if (titleLower.includes("request for")) {
+            assetName = item.Title.substring(titleLower.indexOf("request for") + 11).trim();
+          }
+        }
+
+        logs.push({
+          id: `event-log-${item.ID}`,
+          title: item.Title || "",
+          action: actionText,
+          entityType: item.EntityType || "",
+          entityId: item.EntityId || "",
+          assetName: assetName,
+          details: detailsText,
+          user: item.User || "System",
+          timestamp: formatTimestamp(item.Created)
         });
-      } catch (err) {
-        console.warn("Could not fetch InventoryList for audit logs", err);
-      }
 
-      // 2. Fetch from RequestList
-      try {
-        const reqList = await InventoryService.getRequestList();
-        const requestItems = await this._fetchItemsWithExpandedUsers(reqList);
-        
-        requestItems.forEach((item: any) => {
-          const keys = Object.keys(item);
-          const findKey = (searchStr: string) => {
-            // Prefer matching keys that do not end in "id" (like "Requester" over "RequesterId")
-            const nonIdMatch = keys.find(k => {
-              const kl = k.toLowerCase().replace(/_x0020_/g, '');
-              return kl.indexOf(searchStr) >= 0 && !kl.endsWith("id");
-            });
-            if (nonIdMatch) return nonIdMatch;
-            return keys.find(k => k.toLowerCase().replace(/_x0020_/g, '').indexOf(searchStr) >= 0);
-          };
-
-           const employeeKey = findKey("requester") || findKey("employee") || "Employee";
-           const selectAssetKey = findKey("assettype") || findKey("selectasset") || findKey("type") || "SelectAsset";
-
-           const reqAssetName = item[selectAssetKey] || item.Title || "Unknown Asset";
-           const rawEmp = item[employeeKey] || item.Employee || item.Author;
-           const reqUser = (() => {
-             if (!rawEmp) return item.Title || "System";
-             if (typeof rawEmp === 'string') return rawEmp;
-             if (Array.isArray(rawEmp)) return rawEmp.map((a: any) => a.Title || a.Name || "").join(', ');
-             if (typeof rawEmp === 'object') return rawEmp.Title || rawEmp.Name || JSON.stringify(rawEmp);
-             return rawEmp.toString();
-           })();
-
-           logs.push({
-             id: `request-create-${item.ID}`,
-             title: `Created Request: ${reqAssetName}`,
-             action: 'Create',
-             entityType: 'Request',
-             entityId: item.ID.toString(),
-             assetName: reqAssetName,
-             details: `Asset request was submitted`,
-             user: reqUser,
-             timestamp: item.Created ? item.Created.split('T')[0] + ' ' + item.Created.split('T')[1].substring(0, 8) : new Date().toISOString()
-           });
-           
-           if (item.Modified && item.Created && new Date(item.Modified).getTime() - new Date(item.Created).getTime() > 5000) {
-             logs.push({
-               id: `request-update-${item.ID}-${new Date(item.Modified).getTime()}`,
-               title: `Updated Request: ${reqAssetName}`,
-               action: 'Update',
-               entityType: 'Request',
-               entityId: item.ID.toString(),
-               assetName: reqAssetName,
-               details: `Request details were modified`,
-               user: reqUser,
-               timestamp: item.Modified.split('T')[0] + ' ' + item.Modified.split('T')[1].substring(0, 8)
-             });
-           }
-        });
-      } catch (err) {
-        console.warn("Could not fetch RequestList for audit logs", err);
-      }
-
-      // Sort logs by timestamp descending
-      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-      return logs;
-    } catch (error: any) {
-      console.error("Error generating audit logs from SharePoint lists:", error);
-      return []; 
+        processedEventLogIds.add(`${item.EntityType}-${item.EntityId}-${item.Action}-${formatTimestamp(item.Created).substring(0, 16)}`);
+      });
+    } catch (err) {
+      console.warn("Could not fetch EventLogList, relying on live list generation", err);
     }
+
+    // 2. Fetch from InventoryList for dynamic fallback logs
+    try {
+      const list = await InventoryService.getInventoryList();
+      const fields: any[] = await list.fields.select("InternalName", "Title", "TypeAsString")();
+      const findFieldInternalName = (searchStr: string, fallback: string): string => {
+        let field = fields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase());
+        if (field) return field.InternalName;
+        field = fields.find((f: any) => f.InternalName.toLowerCase().replace(/_x0020_/g, '').indexOf(searchStr.toLowerCase()) >= 0);
+        if (field) return field.InternalName;
+        field = fields.find((f: any) => f.Title.toLowerCase().replace(/[^a-z0-9]/g, '').indexOf(searchStr.toLowerCase()) >= 0);
+        return field ? field.InternalName : fallback;
+      };
+
+      const assetNameKey = findFieldInternalName("assetname", "AssetName");
+      const statusKey = findFieldInternalName("status", "Status");
+
+      const inventoryItems = await list.items.select("ID", "Title", assetNameKey, statusKey, "Created", "Modified", "Author/Title", "Editor/Title").expand("Author", "Editor")();
+
+      inventoryItems.forEach((item: any) => {
+        const itemCreated = formatTimestamp(item.Created);
+        const itemModified = formatTimestamp(item.Modified);
+        const assetName = item[assetNameKey] || item.Title || "";
+        const itemStatus = item[statusKey] || "";
+
+        // Add dynamic Create event
+        const createKey = `Asset-${item.ID}-Create-${itemCreated.substring(0, 16)}`;
+        if (!processedEventLogIds.has(createKey)) {
+          logs.push({
+            id: `asset-create-${item.ID}`,
+            title: `Created Asset: ${item.Title}`,
+            action: 'created',
+            entityType: 'Asset',
+            entityId: item.ID.toString(),
+            assetName: assetName,
+            details: `Asset was added to inventory`,
+            user: item.Author?.Title || "System",
+            timestamp: itemCreated
+          });
+        }
+
+        // Add dynamic Update event if item has been updated
+        if (item.Modified && item.Created && new Date(item.Modified).getTime() - new Date(item.Created).getTime() > 5000) {
+          const updateKey = `Asset-${item.ID}-Update-${itemModified.substring(0, 16)}`;
+          const updateKeyAssigned = `Asset-${item.ID}-admin assigned-${itemModified.substring(0, 16)}`;
+          if (!processedEventLogIds.has(updateKey) && !processedEventLogIds.has(updateKeyAssigned)) {
+            let actionText = "updated";
+            let detailsText = "Asset details were modified";
+
+            if (itemStatus.toLowerCase().includes("assigned") || itemStatus.toLowerCase() === "active" || itemStatus.toLowerCase() === "in use") {
+              actionText = "admin assigned";
+              detailsText = "Asset assigned to employee";
+            } else if (itemStatus.toLowerCase().includes("maintenance")) {
+              actionText = "status updated to in progress";
+              detailsText = "Under investigation";
+            } else if (itemStatus.toLowerCase() === "in stock" || itemStatus.toLowerCase() === "yes") {
+              actionText = "status updated to resolved";
+              detailsText = "Replacement cable sourced";
+            }
+
+            logs.push({
+              id: `asset-update-${item.ID}-${new Date(item.Modified).getTime()}`,
+              title: `Updated Asset: ${item.Title}`,
+              action: actionText,
+              entityType: 'Asset',
+              entityId: item.ID.toString(),
+              assetName: assetName,
+              details: detailsText,
+              user: item.Editor?.Title || "System",
+              timestamp: itemModified
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not fetch InventoryList for audit logs", err);
+    }
+
+    // 3. Fetch from RequestList for dynamic fallback logs
+    try {
+      const reqList = await InventoryService.getRequestList();
+      const requestItems = await this._fetchItemsWithExpandedUsers(reqList);
+
+      requestItems.forEach((item: any) => {
+        const keys = Object.keys(item);
+        const findKey = (searchStr: string) => {
+          const nonIdMatch = keys.find(k => {
+            const kl = k.toLowerCase().replace(/_x0020_/g, '');
+            return kl.indexOf(searchStr) >= 0 && !kl.endsWith("id");
+          });
+          if (nonIdMatch) return nonIdMatch;
+          return keys.find(k => k.toLowerCase().replace(/_x0020_/g, '').indexOf(searchStr) >= 0);
+        };
+
+        const employeeKey = findKey("requester") || findKey("employee") || "Employee";
+        const selectAssetKey = findKey("assettype") || findKey("selectasset") || findKey("type") || "SelectAsset";
+        const statusKey = keys.find(key => this._isBusinessStatusKey(key)) || "RequestStatus";
+        const assetStatusKey = findKey("assetstatus") || "AssetStatus";
+
+        const reqAssetName = item[selectAssetKey] || item.Title || "Unknown Asset";
+        const rawEmp = item[employeeKey] || item.Employee || item.Author;
+        const reqUser = (() => {
+          if (!rawEmp) return item.Title || "System";
+          if (typeof rawEmp === 'string') return rawEmp;
+          if (Array.isArray(rawEmp)) return rawEmp.map((a: any) => a.Title || a.Name || "").join(', ');
+          if (typeof rawEmp === 'object') return rawEmp.Title || rawEmp.Name || JSON.stringify(rawEmp);
+          return rawEmp.toString();
+        })();
+
+        const itemCreated = formatTimestamp(item.Created);
+        const itemModified = formatTimestamp(item.Modified);
+        const requestStatus = item[statusKey] || "";
+        const assetStatus = item[assetStatusKey] || "";
+
+        // Add dynamic Create event
+        const createKey = `Request-${item.ID}-Create-${itemCreated.substring(0, 16)}`;
+        if (!processedEventLogIds.has(createKey)) {
+          logs.push({
+            id: `request-create-${item.ID}`,
+            title: `Created Request: ${reqAssetName}`,
+            action: 'created',
+            entityType: 'Request',
+            entityId: item.ID.toString(),
+            assetName: reqAssetName,
+            details: `Submitted asset request for ${reqAssetName}`,
+            user: reqUser,
+            timestamp: itemCreated
+          });
+        }
+
+        // Add dynamic Update event
+        if (item.Modified && item.Created && new Date(item.Modified).getTime() - new Date(item.Created).getTime() > 5000) {
+          const updateKey = `Request-${item.ID}-Update-${itemModified.substring(0, 16)}`;
+          if (!processedEventLogIds.has(updateKey)) {
+            if (requestStatus.toLowerCase().includes("approv")) {
+              logs.push({
+                id: `request-approve-${item.ID}-${new Date(item.Modified).getTime()}`,
+                title: `Approved Request: ${reqAssetName}`,
+                action: 'manager approved',
+                entityType: 'Request',
+                entityId: item.ID.toString(),
+                assetName: reqAssetName,
+                details: `Approved request for ${reqAssetName}`,
+                user: reqUser,
+                timestamp: itemModified
+              });
+
+              if (assetStatus.toLowerCase().includes("approv")) {
+                logs.push({
+                  id: `request-assign-${item.ID}-${new Date(item.Modified).getTime()}`,
+                  title: `Assigned Request: ${reqAssetName}`,
+                  action: 'admin assigned',
+                  entityType: 'Request',
+                  entityId: item.ID.toString(),
+                  assetName: reqAssetName,
+                  details: `Assigned ${reqAssetName}`,
+                  user: reqUser,
+                  timestamp: itemModified
+                });
+              }
+            } else if (requestStatus.toLowerCase().includes("reject") || requestStatus.toLowerCase().includes("declin")) {
+              logs.push({
+                id: `request-reject-${item.ID}-${new Date(item.Modified).getTime()}`,
+                title: `Rejected Request: ${reqAssetName}`,
+                action: 'manager rejected',
+                entityType: 'Request',
+                entityId: item.ID.toString(),
+                assetName: reqAssetName,
+                details: `Rejected request for ${reqAssetName}`,
+                user: reqUser,
+                timestamp: itemModified
+              });
+            } else {
+              logs.push({
+                id: `request-update-${item.ID}-${new Date(item.Modified).getTime()}`,
+                title: `Updated Request: ${reqAssetName}`,
+                action: 'updated',
+                entityType: 'Request',
+                entityId: item.ID.toString(),
+                assetName: reqAssetName,
+                details: `Request details were modified`,
+                user: reqUser,
+                timestamp: itemModified
+              });
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not fetch RequestList for audit logs", err);
+    }
+
+    // Sort logs by timestamp descending
+    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return logs;
   }
 
   public static async getRequestHistoryById(
