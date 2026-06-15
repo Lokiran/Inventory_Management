@@ -1,6 +1,7 @@
 import { IInventoryItem } from "../models/IInventoryItem";
 import { IRequest } from "../models/IRequest";
 import { IEventLog } from "../models/IEventLog";
+import { IReturnRequest } from "../models/IReturnRequest";
 import { getSP } from "../pnpjsConfig";
 import { EMPLOYEES } from "../data/mockData";
 
@@ -292,21 +293,50 @@ export class InventoryService {
     return `REQ-${padded}`;
   }
 
+  private static _resolveRequestKeyInternalName(fields: any[]): string {
+    const candidates = ["requestid", "requestkey", "request_x0020_id", "request_x0020_key", "request id"];
+    for (const cand of candidates) {
+      const field = fields.find((f: any) => {
+        const internal = (f.InternalName || "").toLowerCase();
+        const title = (f.Title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const candNorm = cand.replace(/[^a-z0-9]/g, "");
+        return internal === cand || internal.replace(/_x0020_/g, "") === candNorm || title === candNorm;
+      });
+      if (field) {
+        return field.InternalName;
+      }
+    }
+    return InventoryService.REQUEST_KEY_INTERNAL_NAME;
+  }
+
+  private static async _updateMissingRequestKeys(list: any, resolvedKeyName: string, items: any[]): Promise<void> {
+    for (const item of items) {
+      try {
+        const itemId = parseInt(item.ID.toString(), 10);
+        if (!Number.isNaN(itemId)) {
+          const requestKey = this._buildRequestKeyFromItemId(itemId);
+          await list.items.getById(itemId).update({
+            [resolvedKeyName]: requestKey
+          });
+          console.log(`Successfully populated Request ID in SharePoint for item ${itemId}: ${requestKey}`);
+        }
+      } catch (err) {
+        console.warn(`Failed to update missing Request ID for item ${item.ID}:`, err);
+      }
+    }
+  }
+
   private static _extractRequestKey(item: any): string {
     if (!item) {
       return "";
     }
 
-    const directValue = item[InventoryService.REQUEST_KEY_INTERNAL_NAME];
-    if (directValue) {
-      return this._normalizeRequestKey(directValue.toString());
-    }
-
-    const matchingKey = Object.keys(item).find(key =>
-      key.toLowerCase().replace(/_x0020_/g, "") === InventoryService.REQUEST_KEY_INTERNAL_NAME.toLowerCase()
-    );
-    if (matchingKey && item[matchingKey]) {
-      return this._normalizeRequestKey(item[matchingKey].toString());
+    const candidates = ["requestkey", "requestid", "request_x0020_id", "request_x0020_key"];
+    for (const key of Object.keys(item)) {
+      const normalizedKey = key.toLowerCase().replace(/_x0020_/g, "");
+      if (candidates.indexOf(normalizedKey) >= 0 && item[key]) {
+        return this._normalizeRequestKey(item[key].toString());
+      }
     }
 
     if (item.ID) {
@@ -364,8 +394,9 @@ export class InventoryService {
       }
 
       const hasRequestKey = fields.some(field => {
-        const internalName = (field.InternalName || '').toString().toLowerCase();
-        return internalName === InventoryService.REQUEST_KEY_INTERNAL_NAME.toLowerCase();
+        const name = (field.InternalName || '').toString().toLowerCase();
+        const title = (field.Title || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+        return name === 'requestkey' || name === 'requestid' || name === 'request_x0020_id' || title === 'requestid' || title === 'requestkey';
       });
       if (!hasRequestKey) {
         try {
@@ -894,9 +925,11 @@ export class InventoryService {
       if (!Number.isNaN(requestItemId)) {
         try {
           const requestListInstance = await InventoryService.getRequestList();
+          const fields: any[] = await requestListInstance.fields.select("InternalName", "Title")();
+          const resolvedKeyName = InventoryService._resolveRequestKeyInternalName(fields);
           await requestListInstance.items.getById(requestItemId)
             .update({
-              [InventoryService.REQUEST_KEY_INTERNAL_NAME]: requestKey,
+              [resolvedKeyName]: requestKey,
               [InventoryService.ASSET_STATUS_INTERNAL_NAME]: "Pending"
             });
         } catch (err) {
@@ -975,14 +1008,16 @@ export class InventoryService {
       const priorityKey = findFieldInternalName("priority", "Priority");
       const requestDateKey = findFieldInternalName("requestdate", "RequestDate");
 
-      return items.map((item: any) => {
+      const resolvedKeyName = this._resolveRequestKeyInternalName(fields);
+
+      const mapped = items.map((item: any) => {
         const rawStatus = item[statusKey] || item.Status || 'Pending';
         const normalizedStatus = (rawStatus || '').toString().toLowerCase();
-        const status =
+        const status: 'Pending' | 'Approved' | 'Declined' =
           (normalizedStatus.includes('approv')) ? 'Approved' :
             (normalizedStatus.includes('declin') || normalizedStatus.includes('reject')) ? 'Declined' :
               'Pending';
-        const requestKey = this._extractRequestKey(item);
+        const requestKey = item[resolvedKeyName] || this._extractRequestKey(item);
 
         return {
           id: item.ID ? item.ID.toString() : Math.random().toString(36).substr(2, 9),
@@ -1002,12 +1037,21 @@ export class InventoryService {
           priority: item[priorityKey] || "Medium",
           quantity: parseInt(item[quantityKey]) || 1,
           status,
-          assetStatus: (item[assetStatusKey] || "Pending").toString().toLowerCase().includes("approv") ? "Approved" : "Pending",
+          assetStatus: ((item[assetStatusKey] || "Pending").toString().toLowerCase().includes("approv") ? "Approved" : "Pending") as 'Pending' | 'Approved',
           managerResponse: item[managerCommentKey] || "",
           requestDate: item[requestDateKey] ? item[requestDateKey].split('T')[0] : (item.Created ? item.Created.split('T')[0] : new Date().toISOString().split('T')[0]),
           reason: item[reasonKey] || ""
         };
       });
+
+      const itemsToUpdate = items.filter((item: any) => !item[resolvedKeyName] && item.ID);
+      if (itemsToUpdate.length > 0) {
+        this._updateMissingRequestKeys(list, resolvedKeyName, itemsToUpdate).catch(err => {
+          console.warn("Background update of missing RequestKeys failed:", err);
+        });
+      }
+
+      return mapped;
     } catch (error: any) {
       console.error("Error fetching requests from SharePoint:", error);
       throw error;
@@ -1816,6 +1860,18 @@ export class InventoryService {
               } else if (parsed.lifecycle === "Submitted") {
                 detailsText = `Submitted asset request for ${assetName || "Asset"}`;
                 actionText = "created";
+              } else if (parsed.lifecycle === "ReturnRequested") {
+                detailsText = `Requested return of ${assetName || "Asset"}`;
+                actionText = "return requested";
+              } else if (parsed.lifecycle === "ReturnApproved") {
+                detailsText = `Approved return request for ${assetName || "Asset"}`;
+                actionText = "return approved";
+              } else if (parsed.lifecycle === "ReturnRejected") {
+                detailsText = `Rejected return request for ${assetName || "Asset"}`;
+                actionText = "return rejected";
+              } else if (parsed.lifecycle === "ReturnCompleted") {
+                detailsText = `Completed return of ${assetName || "Asset"}`;
+                actionText = "return completed";
               }
             } else if (parsed.assetStatus === "Approved" || parsed.lifecycle === "AssetStatusUpdated") {
               detailsText = `Assigned ${assetName || "Asset"}`;
@@ -1840,6 +1896,18 @@ export class InventoryService {
         if (titleLower.includes("directly assigned") || detailsLower.includes("assigned to employee") || detailsLower.includes("assigned to:")) {
           actionText = "admin assigned";
           detailsText = "Asset assigned to employee";
+        } else if (titleLower.includes("approved return request") || detailsLower.includes("approved return request")) {
+          actionText = "return approved";
+          detailsText = `Approved return request for ${assetName || "Asset"}`;
+        } else if (titleLower.includes("rejected return request") || detailsLower.includes("rejected return request")) {
+          actionText = "return rejected";
+          detailsText = `Rejected return request for ${assetName || "Asset"}`;
+        } else if (titleLower.includes("completed return") || detailsLower.includes("completed return")) {
+          actionText = "return completed";
+          detailsText = `Completed return of ${assetName || "Asset"}`;
+        } else if (titleLower.includes("requested return") || detailsLower.includes("requested return")) {
+          actionText = "return requested";
+          detailsText = `Requested return of ${assetName || "Asset"}`;
         } else if (titleLower.includes("approved request") || detailsLower.includes("approved request")) {
           actionText = "manager approved";
           detailsText = `Approved request for ${assetName || "Asset"}`;
@@ -2104,11 +2172,12 @@ export class InventoryService {
     const reqList = await InventoryService.getRequestList();
     let requestItems: any[] = [];
     try {
+      const fields: any[] = await reqList.fields.select("InternalName", "Title")();
+      const resolvedKeyName = InventoryService._resolveRequestKeyInternalName(fields);
       requestItems = await reqList
         .items.select("*")
-        .filter(`${InventoryService.REQUEST_KEY_INTERNAL_NAME} eq '${normalizedRequestKey.replace(/'/g, "''")}'`)();
+        .filter(`${resolvedKeyName} eq '${normalizedRequestKey.replace(/'/g, "''")}'`)();
     } catch (filterError) {
-      // RequestKey column might not exist yet; fallback to derived ID format.
       console.warn("RequestKey filter failed. Falling back to item ID based lookup.", filterError);
     }
 
@@ -2201,6 +2270,261 @@ export class InventoryService {
     } catch (error: any) {
       console.error("Dynamic user expansion failed:", error);
       throw new Error(`Dynamic user expansion failed: ${error.message || JSON.stringify(error)}`);
+    }
+  }
+
+  public static async getReturnRequests(): Promise<IReturnRequest[]> {
+    const sp = getSP();
+    try {
+      const list = sp.web.lists.getByTitle("ReturnRequestList");
+      const items = await list.items.select("ID", "Title", "AssetID", "AssetName", "SerialNumber", "RequesterName", "RequesterEmail", "RequestDate", "ReturnReason", "ProposedCondition", "Status", "ManagerComment", "CompletedDate")();
+      return items.map((item: any) => ({
+        id: item.ID.toString(),
+        title: item.Title || "",
+        assetId: item.AssetID || item.AssetId || "",
+        assetName: item.AssetName || "",
+        serialNumber: item.SerialNumber || "",
+        requesterName: item.RequesterName || "",
+        requesterEmail: item.RequesterEmail || "",
+        requestDate: item.RequestDate || "",
+        returnReason: item.ReturnReason || "",
+        proposedCondition: item.ProposedCondition || "",
+        status: item.Status || "Pending",
+        managerComment: item.ManagerComment || "",
+        completedDate: item.CompletedDate || ""
+      }));
+    } catch (error) {
+      console.warn("Could not fetch ReturnRequestList from SharePoint, using local storage fallback", error);
+      try {
+        const local = localStorage.getItem("inventory_return_requests");
+        return local ? JSON.parse(local) : [];
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  public static async addReturnRequest(request: Omit<IReturnRequest, 'id' | 'status'>, userDisplayName: string): Promise<void> {
+    const sp = getSP();
+    const newRequest: IReturnRequest = {
+      ...request,
+      id: `RR-${Date.now()}`,
+      status: 'Pending'
+    };
+
+    try {
+      const list = sp.web.lists.getByTitle("ReturnRequestList");
+      await list.items.add({
+        Title: request.title,
+        AssetID: request.assetId,
+        AssetName: request.assetName,
+        SerialNumber: request.serialNumber,
+        RequesterName: request.requesterName,
+        RequesterEmail: request.requesterEmail || "",
+        RequestDate: request.requestDate,
+        ReturnReason: request.returnReason,
+        ProposedCondition: request.proposedCondition,
+        Status: "Pending"
+      });
+
+    } catch (error) {
+      console.warn("Failed to save return request to ReturnRequestList in SharePoint, saving to local storage fallback", error);
+      try {
+        const local = localStorage.getItem("inventory_return_requests");
+        const list: IReturnRequest[] = local ? JSON.parse(local) : [];
+        list.push(newRequest);
+        localStorage.setItem("inventory_return_requests", JSON.stringify(list));
+      } catch (e) {
+        console.error("Local storage save failed", e);
+      }
+    }
+
+    try {
+      const list = await InventoryService.getInventoryList();
+      const fields: any[] = await list.fields.select("InternalName", "Title", "TypeAsString")();
+      const statusField = fields.find((f: any) => f.InternalName.toLowerCase() === "status" || f.Title.toLowerCase() === "status");
+      const statusKey = statusField ? statusField.InternalName : "Status";
+      
+      await list.items.getById(parseInt(request.assetId)).update({
+        [statusKey]: "Pending Return"
+      });
+    } catch (error) {
+      console.warn("Failed to update asset status in SharePoint, doing local storage fallback for asset state", error);
+    }
+
+    try {
+      await this.addAuditLog({
+        title: `Requested Return: ${request.assetName}`,
+        action: 'Update',
+        entityType: 'Asset',
+        entityId: request.assetId,
+        details: JSON.stringify({
+          lifecycle: "ReturnRequested",
+          assetId: request.assetId,
+          assetName: request.assetName,
+          serialNumber: request.serialNumber,
+          requesterName: request.requesterName,
+          returnReason: request.returnReason,
+          proposedCondition: request.proposedCondition,
+          requestedAt: new Date().toISOString()
+        }),
+        user: userDisplayName
+      });
+    } catch (e) {
+      console.warn("Failed to add audit log for return request", e);
+    }
+  }
+
+  public static async updateReturnRequestStatus(
+    requestId: string,
+    status: 'Approved' | 'Rejected' | 'Completed',
+    managerComment: string,
+    approverName: string,
+    finalCondition?: string
+  ): Promise<void> {
+    const sp = getSP();
+
+    const requests = await this.getReturnRequests();
+    const req = requests.find(r => r.id === requestId);
+    if (!req) {
+      throw new Error(`Return request with ID ${requestId} not found.`);
+    }
+
+    let updatedSharePoint = false;
+    if (requestId.indexOf("RR-") !== 0) {
+      try {
+        const list = sp.web.lists.getByTitle("ReturnRequestList");
+        const payload: any = {
+          Status: status,
+          ManagerComment: managerComment
+        };
+        if (status === 'Completed') {
+          payload.CompletedDate = new Date().toISOString().split('T')[0];
+        }
+        await list.items.getById(parseInt(requestId)).update(payload);
+        updatedSharePoint = true;
+      } catch (err) {
+        console.warn("Failed to update return request status in SharePoint", err);
+      }
+    }
+
+    if (!updatedSharePoint) {
+      try {
+        const local = localStorage.getItem("inventory_return_requests");
+        if (local) {
+          const list: IReturnRequest[] = JSON.parse(local);
+          const updated = list.map(r => {
+            if (r.id === requestId) {
+              const updatedReq = { ...r, status, managerComment };
+              if (status === 'Completed') {
+                updatedReq.completedDate = new Date().toISOString().split('T')[0];
+              }
+              return updatedReq;
+            }
+            return r;
+          });
+          localStorage.setItem("inventory_return_requests", JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.error("Local storage update failed", e);
+      }
+    }
+
+    try {
+      const list = await InventoryService.getInventoryList();
+      const fields: any[] = await list.fields.select("InternalName", "Title", "TypeAsString")();
+      
+      const findField = (searchStr: string, fallback: string): string => {
+        const field = fields.find((f: any) => f.InternalName.toLowerCase() === searchStr.toLowerCase() || f.Title.toLowerCase() === searchStr.toLowerCase());
+        return field ? field.InternalName : fallback;
+      };
+
+      const statusKey = findField("status", "Status");
+      const assignedToKey = findField("assignedto", "AssignedTo");
+      const conditionKey = findField("condition", "Condition");
+      const noteKey = findField("note", "Note");
+
+      const assetIdNum = parseInt(req.assetId, 10);
+
+      if (status === 'Completed') {
+        const condition = finalCondition || req.proposedCondition || "Good";
+        let nextStatus = "In Stock";
+        if (condition === "Poor" || condition === "Damaged") {
+          nextStatus = "Under Maintenance";
+        }
+
+        const payload: any = {
+          [statusKey]: nextStatus,
+          [assignedToKey]: null,
+          [conditionKey]: condition,
+          [noteKey]: `Returned by employee. Manager Note: ${managerComment}`
+        };
+
+        const assignedFieldObj = fields.find(f => f.InternalName === assignedToKey);
+        const isUserField = assignedFieldObj && (assignedFieldObj.TypeAsString === "User" || assignedFieldObj.TypeAsString === "UserMulti");
+        if (isUserField) {
+          payload[`${assignedToKey}Id`] = null;
+        }
+
+        try {
+          await list.items.getById(assetIdNum).update(payload);
+        } catch (err) {
+          console.warn("SharePoint Asset update failed on Return Completion, doing fallback", err);
+        }
+      } else if (status === 'Approved') {
+        try {
+          await list.items.getById(assetIdNum).update({
+            [statusKey]: "Return Approved"
+          });
+        } catch (err) {
+          console.warn("SharePoint Asset update failed on Return Approval", err);
+        }
+      } else if (status === 'Rejected') {
+        try {
+          await list.items.getById(assetIdNum).update({
+            [statusKey]: "Assigned"
+          });
+        } catch (err) {
+          console.warn("SharePoint Asset update failed on Return Rejection", err);
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to execute Asset inventory sync for return requests. Continuing.", error);
+    }
+
+    try {
+      let logTitle = "";
+      let lifecycle = "";
+      if (status === 'Approved') {
+        logTitle = `Approved Return Request for Asset: ${req.assetName}`;
+        lifecycle = "ReturnApproved";
+      } else if (status === 'Rejected') {
+        logTitle = `Rejected Return Request for Asset: ${req.assetName}`;
+        lifecycle = "ReturnRejected";
+      } else if (status === 'Completed') {
+        logTitle = `Completed Return for Asset: ${req.assetName}`;
+        lifecycle = "ReturnCompleted";
+      }
+
+      await this.addAuditLog({
+        title: logTitle,
+        action: 'Update',
+        entityType: 'Asset',
+        entityId: req.assetId,
+        details: JSON.stringify({
+          requestKey: req.id,
+          lifecycle,
+          assetName: req.assetName,
+          requesterName: req.requesterName,
+          changedBy: approverName,
+          changedAt: new Date().toISOString(),
+          managerComment,
+          condition: finalCondition || req.proposedCondition
+        }),
+        user: approverName
+      });
+    } catch (e) {
+      console.warn("Failed to add audit log for return request status update", e);
     }
   }
 }

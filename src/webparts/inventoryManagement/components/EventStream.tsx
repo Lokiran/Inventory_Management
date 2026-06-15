@@ -69,6 +69,22 @@ export const EventStream: React.FC<IEventStreamProps> = (props) => {
           backgroundColor = '#fee2e2'; // Light red
           textColor = '#991b1b';      // Dark red
           displayText = 'deleted';
+        } else if (normalizedAction === 'return requested') {
+          backgroundColor = '#ffedd5'; // Light orange
+          textColor = '#9a3412';      // Dark orange
+          displayText = 'return requested';
+        } else if (normalizedAction === 'return approved') {
+          backgroundColor = '#dcfce7'; // Light green
+          textColor = '#166534';      // Dark green
+          displayText = 'return approved';
+        } else if (normalizedAction === 'return completed') {
+          backgroundColor = '#ccfbf1'; // Light teal
+          textColor = '#115e59';      // Dark teal
+          displayText = 'return completed';
+        } else if (normalizedAction === 'return rejected') {
+          backgroundColor = '#fee2e2'; // Light red
+          textColor = '#991b1b';      // Dark red
+          displayText = 'return rejected';
         } else if (normalizedAction === 'update') {
           backgroundColor = '#ffedd5'; // Light orange/yellow (fallback for generic Update)
           textColor = '#9a3412';

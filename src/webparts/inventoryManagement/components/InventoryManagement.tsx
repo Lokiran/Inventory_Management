@@ -11,6 +11,9 @@ import { getSP } from '../pnpjsConfig';
 import { AssetForm } from './AssetForm';
 import { RequestForm } from './RequestForm';
 import { EventStream } from './EventStream';
+import { IReturnRequest } from '../models/IReturnRequest';
+import { ReturnAssetForm } from './ReturnAssetForm';
+import { ReturnRequestList } from './ReturnRequestList';
 import { PrimaryButton, Pivot, PivotItem, TextField, DetailsList, DetailsListLayoutMode, SelectionMode, IColumn, DetailsRow, Panel, PanelType, MessageBar, MessageBarType, ProgressIndicator, Icon, Stack } from '@fluentui/react';
 import {
   Chart as ChartJS,
@@ -63,6 +66,10 @@ export interface IInventoryManagementState {
   clearedNotificationIds: string[];
   selectedNotification?: INotification;
   isNotificationDetailsOpen: boolean;
+  returnRequests: IReturnRequest[];
+  returnRequestsLoading: boolean;
+  selectedAssetForReturn: IInventoryItem | undefined;
+  isReturnFormOpen: boolean;
 }
 
 export default class InventoryManagement extends React.Component<IInventoryManagementProps, IInventoryManagementState> {
@@ -237,6 +244,62 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       }
     });
 
+    // 3. Generate Asset Return Notifications
+    const returnRequests = this.state.returnRequests || [];
+    returnRequests.forEach(ret => {
+      const isMyReturn = normalize(ret.requesterName) === activeUserNorm || activeUserNorm.includes(normalize(ret.requesterName)) || normalize(ret.requesterName).includes(activeUserNorm);
+
+      if (isAdminOrManager) {
+        if (ret.status === 'Pending') {
+          const id = `ret-pending-${ret.id}`;
+          if (!clearedIds.has(id)) {
+            notifications.push({
+              id,
+              title: "Asset Return Pending",
+              message: `${ret.requesterName} requested to return ${ret.assetName} (Reason: ${ret.returnReason || "None"})`,
+              type: 'info',
+              timestamp: formatTime(ret.requestDate),
+              isRead: readIds.has(id),
+              actionLink: 'AssetReturns',
+              category: 'Request'
+            });
+          }
+        }
+      }
+
+      if (isMyReturn) {
+        if (ret.status === 'Approved' || ret.status === 'Rejected' || ret.status === 'Completed') {
+          const id = `ret-resolved-${ret.id}-${ret.status}`;
+          if (!clearedIds.has(id)) {
+            let titleText = "Return Request Approved";
+            let type: 'info' | 'success' | 'warning' | 'error' = 'success';
+            let messageText = `Your return request for ${ret.assetName} has been approved. Please hand it over.`;
+
+            if (ret.status === 'Rejected') {
+              titleText = "Return Request Rejected";
+              type = 'error';
+              messageText = `Your return request for ${ret.assetName} was rejected. Note: ${ret.managerComment || ""}`;
+            } else if (ret.status === 'Completed') {
+              titleText = "Asset Return Completed";
+              type = 'success';
+              messageText = `Your return of ${ret.assetName} is complete and has been checked back into stock.`;
+            }
+
+            notifications.push({
+              id,
+              title: titleText,
+              message: messageText,
+              type,
+              timestamp: formatTime(ret.completedDate || ret.requestDate),
+              isRead: readIds.has(id),
+              actionLink: 'My Assets',
+              category: 'Assignment'
+            });
+          }
+        }
+      }
+    });
+
     // Sort notifications by timestamp descending
     notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     return notifications;
@@ -309,7 +372,11 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       readNotificationIds: readIds,
       clearedNotificationIds: clearedIds,
       selectedNotification: undefined,
-      isNotificationDetailsOpen: false
+      isNotificationDetailsOpen: false,
+      returnRequests: [],
+      returnRequestsLoading: true,
+      selectedAssetForReturn: undefined,
+      isReturnFormOpen: false
     };
   }
 
@@ -318,6 +385,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     await this._loadInventory();
     await this._loadRequests();
     await this._loadAuditLogs();
+    await this._loadReturnRequests();
 
     // Dynamically auto-sync existing assigned assets of our 5 active users to the Mapping List
     try {
@@ -441,6 +509,70 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     } catch (error) {
       console.error("Failed to load audit logs:", error);
       this.setState({ auditLogsLoading: false });
+    }
+  };
+
+  private _loadReturnRequests = async (): Promise<void> => {
+    try {
+      this.setState({ returnRequestsLoading: true });
+      const returnRequests = await InventoryService.getReturnRequests();
+      this.setState({ returnRequests, returnRequestsLoading: false });
+    } catch (error) {
+      console.error("Failed to load return requests:", error);
+      this.setState({ returnRequestsLoading: false });
+    }
+  };
+
+  private _onSubmitReturnRequest = async (reason: string, condition: string): Promise<void> => {
+    const { selectedAssetForReturn } = this.state;
+    if (!selectedAssetForReturn) return;
+
+    try {
+      this.setState({ returnRequestsLoading: true });
+      const reqPayload = {
+        title: `Return Request for ${selectedAssetForReturn.assetName || selectedAssetForReturn.title}`,
+        assetId: selectedAssetForReturn.id,
+        assetName: selectedAssetForReturn.assetName || selectedAssetForReturn.title,
+        serialNumber: selectedAssetForReturn.serialNumber,
+        requesterName: this.props.userDisplayName,
+        requesterEmail: this.props.userEmail,
+        requestDate: new Date().toISOString().split('T')[0],
+        returnReason: reason,
+        proposedCondition: condition
+      };
+
+      await InventoryService.addReturnRequest(reqPayload, this.props.userDisplayName);
+
+      await this._loadInventory();
+      await this._loadReturnRequests();
+      await this._loadAuditLogs();
+      this.setState({ isReturnFormOpen: false, selectedAssetForReturn: undefined });
+    } catch (error: any) {
+      this.setState({ 
+        errorMessage: `Failed to submit return request: ${error.message || JSON.stringify(error)}`,
+        returnRequestsLoading: false
+      });
+    }
+  };
+
+  private _onUpdateReturnRequestStatus = async (
+    requestId: string,
+    status: 'Approved' | 'Rejected' | 'Completed',
+    comment: string,
+    finalCondition?: string
+  ): Promise<void> => {
+    try {
+      this.setState({ returnRequestsLoading: true });
+      await InventoryService.updateReturnRequestStatus(requestId, status, comment, this.props.userDisplayName, finalCondition);
+
+      await this._loadInventory();
+      await this._loadReturnRequests();
+      await this._loadAuditLogs();
+    } catch (error: any) {
+      this.setState({ 
+        errorMessage: `Failed to update return status: ${error.message || JSON.stringify(error)}`,
+        returnRequestsLoading: false
+      });
     }
   };
 
@@ -1027,7 +1159,11 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                   <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                     View assets currently assigned to you.
                   </p>
-                  <InventoryList items={myAssets} isAdmin={false} />
+                  <InventoryList 
+                    items={myAssets} 
+                    isAdmin={false} 
+                    onReturnAsset={(item) => this.setState({ selectedAssetForReturn: item, isReturnFormOpen: true })}
+                  />
                 </div>
               </PivotItem>
 
@@ -1202,6 +1338,25 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                       showResponseColumns={false}
                       onApproveAsset={this._onApproveAsset}
                       actionInProgressId={requestActionInProgressId}
+                    />
+                  </div>
+                </PivotItem>
+              )}
+              {(isAdmin || isManager) && (
+                <PivotItem headerText="Asset Returns" itemIcon="ReturnToSession" itemKey="AssetReturns">
+                  <div style={{ marginTop: '20px' }}>
+                    <div className={styles.cardHeader}>
+                      <h3>Asset Returns Registry</h3>
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
+                      Review and complete employee asset return requests, and verify physical hardware check-ins.
+                    </p>
+                    <ReturnRequestList
+                      items={this.state.returnRequests}
+                      isAdmin={isAdmin}
+                      isManager={isManager}
+                      onUpdateStatus={this._onUpdateReturnRequestStatus}
+                      loading={this.state.returnRequestsLoading}
                     />
                   </div>
                 </PivotItem>
@@ -1583,6 +1738,12 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         )}
 
         {this._renderNotificationDetailsPanel()}
+        <ReturnAssetForm
+          isOpen={this.state.isReturnFormOpen}
+          onDismiss={() => this.setState({ isReturnFormOpen: false, selectedAssetForReturn: undefined })}
+          asset={this.state.selectedAssetForReturn}
+          onSubmit={this._onSubmitReturnRequest}
+        />
       </section>
     );
   }

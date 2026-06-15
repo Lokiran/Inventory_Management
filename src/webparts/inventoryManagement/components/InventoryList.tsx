@@ -7,10 +7,12 @@ import {
   IColumn,
   IGroup
 } from '@fluentui/react/lib/DetailsList';
+import { PrimaryButton } from '@fluentui/react/lib/Button';
 
 export interface IInventoryListProps {
   items: IInventoryItem[];
   isAdmin?: boolean;
+  onReturnAsset?: (item: IInventoryItem) => void;
 }
 
 export const InventoryList: React.FC<IInventoryListProps> = (props) => {
@@ -33,8 +35,22 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
       isResizable: true,
       onRender: (item: IInventoryItem) => {
         const isAvailable = item.status === 'Yes' || item.status === 'In Stock';
-        const backgroundColor = isAvailable ? '#dcfce7' : '#fee2e2';
-        const textColor = isAvailable ? '#166534' : '#991b1b';
+        const isPendingReturn = item.status === 'Pending Return';
+        const isReturnApproved = item.status === 'Return Approved';
+        
+        let backgroundColor = '#fee2e2';
+        let textColor = '#991b1b';
+
+        if (isAvailable) {
+          backgroundColor = '#dcfce7';
+          textColor = '#166534';
+        } else if (isPendingReturn) {
+          backgroundColor = '#ffedd5';
+          textColor = '#9a3412';
+        } else if (isReturnApproved) {
+          backgroundColor = '#dcfce7';
+          textColor = '#166534';
+        }
         
         return (
           <span style={{ 
@@ -53,6 +69,41 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
     },
     { key: 'column8', name: 'Assigned To', fieldName: 'assignedTo', minWidth: 100, maxWidth: 150, isResizable: true },
     { key: 'column9', name: 'Specifications', fieldName: 'specifications', minWidth: 150, maxWidth: 300, isResizable: true },
+    ...(props.onReturnAsset ? [
+      {
+        key: 'columnActions',
+        name: 'Actions',
+        minWidth: 100,
+        maxWidth: 120,
+        isResizable: true,
+        onRender: (item: IInventoryItem) => {
+          const isPendingReturn = item.status === 'Pending Return';
+          const isReturnApproved = item.status === 'Return Approved';
+          
+          if (isPendingReturn) {
+            return (
+              <span style={{ color: '#ea580c', fontWeight: 600, fontSize: '0.8rem' }}>
+                Pending Return
+              </span>
+            );
+          }
+          if (isReturnApproved) {
+            return (
+              <span style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.8rem' }}>
+                Approved
+              </span>
+            );
+          }
+          return (
+            <PrimaryButton
+              text="Return"
+              onClick={() => props.onReturnAsset!(item)}
+              styles={{ root: { height: 26, padding: '4px 8px', fontSize: '0.8rem' } }}
+            />
+          );
+        }
+      }
+    ] : [])
   ];
 
   // Grouping Logic for Admins
