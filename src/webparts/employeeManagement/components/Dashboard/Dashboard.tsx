@@ -37,12 +37,12 @@ export const Dashboard: React.FC<IEmployeeManagementProps & { setIsLoading: (loa
 
   useEffect(() => {
     loadDashboardStats();
-  }, []);
+  }, [props.userEmail]);
 
   const loadDashboardStats = async () => {
     try {
       props.setIsLoading(true);
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       const dashboardData = await service.getDashboardStats(props.userEmail);
       setStats(dashboardData);
     } catch (error) {

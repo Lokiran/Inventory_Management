@@ -42,6 +42,7 @@
     "@types/react-dom": "17.0.17",
     "@types/webpack-env": "~1.15.2",
     "@typescript-eslint/parser": "8.46.2",
+    "concurrently": "^10.0.0",
     "css-loader": "~7.1.2",
     "eslint": "8.57.1",
     "eslint-plugin-react-hooks": "4.3.0",

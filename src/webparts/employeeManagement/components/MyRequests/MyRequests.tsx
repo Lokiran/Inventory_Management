@@ -24,14 +24,15 @@ import { InventoryService } from '../../services/InventoryService';
 
 interface IAssetRequestItem {
   id: string;
-  assetType: string;
+  employeeName: string;
+  employeeId: string;
+  serialNo: string;
   assetName: string;
-  quantity: number;
   priority: string;
-  status: string;
+  reason: string;
   requestDate: string;
-  requiredDate: string;
-  description: string;
+  assignedDate: string;
+  status: string;
 }
 
 const cardTokens: ICardTokens = { childrenMargin: 12 };
@@ -53,7 +54,7 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
 
   useEffect(() => {
     loadRequests();
-  }, []);
+  }, [props.userEmail]);
 
   useEffect(() => {
     filterRequests();
@@ -62,7 +63,7 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
   const loadRequests = async () => {
     try {
       props.setIsLoading(true);
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       const data = await service.getEmployeeAssetRequests(props.userEmail);
       setRequests(data);
     } catch (error) {
@@ -79,7 +80,9 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
       filtered = filtered.filter(
         (req) =>
           req.assetName.toLowerCase().includes(searchText.toLowerCase()) ||
-          req.assetType.toLowerCase().includes(searchText.toLowerCase())
+          req.employeeName.toLowerCase().includes(searchText.toLowerCase()) ||
+          req.serialNo.toLowerCase().includes(searchText.toLowerCase()) ||
+          req.reason.toLowerCase().includes(searchText.toLowerCase())
       );
     }
 
@@ -97,7 +100,7 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
 
   const handleCancelRequest = async (requestId: string) => {
     try {
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       await service.cancelAssetRequest(requestId);
       loadRequests();
     } catch (error) {
@@ -107,41 +110,61 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
 
   const columns: IColumn[] = [
     {
-      key: 'assetType',
-      name: 'Asset Type',
+      key: 'employeeName',
+      name: 'Employee',
       minWidth: 100,
-      onRender: (item: IAssetRequestItem) => <Text>{item.assetType}</Text>,
+      onRender: (item: IAssetRequestItem) => <Text>{item.employeeName}</Text>,
+    },
+    {
+      key: 'employeeId',
+      name: 'Employee ID',
+      minWidth: 80,
+      onRender: (item: IAssetRequestItem) => <Text>{item.employeeId}</Text>,
+    },
+    {
+      key: 'serialNo',
+      name: 'Serial NO',
+      minWidth: 100,
+      onRender: (item: IAssetRequestItem) => <Text>{item.serialNo}</Text>,
     },
     {
       key: 'assetName',
       name: 'Asset Name',
-      minWidth: 150,
+      minWidth: 120,
       onRender: (item: IAssetRequestItem) => <Text>{item.assetName}</Text>,
-    },
-    {
-      key: 'quantity',
-      name: 'Quantity',
-      minWidth: 80,
-      onRender: (item: IAssetRequestItem) => <Text>{item.quantity}</Text>,
     },
     {
       key: 'priority',
       name: 'Priority',
+      minWidth: 80,
+      onRender: (item: IAssetRequestItem) => (
+        <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: (item.priority || '').toLowerCase() === 'high' || (item.priority || '').toLowerCase() === 'critical' ? '#d13438' : (item.priority || '').toLowerCase() === 'urgent' ? '#a4262c' : '#0078d4', color: 'white', fontSize: '12px', fontWeight: 600 }}>
+          {item.priority ? item.priority.charAt(0).toUpperCase() + item.priority.slice(1) : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'reason',
+      name: 'Reason for Request',
+      minWidth: 150,
+      onRender: (item: IAssetRequestItem) => <Text>{item.reason}</Text>,
+    },
+    {
+      key: 'requestDate',
+      name: 'Requested Date',
       minWidth: 100,
       onRender: (item: IAssetRequestItem) => (
-        <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: item.priority === 'high' ? '#d13438' : item.priority === 'urgent' ? '#a4262c' : '#0078d4', color: 'white', fontSize: '12px', fontWeight: 600 }}>
-          {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)}
-        </span>
+        <Text>{item.requestDate ? new Date(item.requestDate).toLocaleDateString() : 'N/A'}</Text>
       ),
     },
     {
       key: 'status',
       name: 'Status',
-      minWidth: 120,
+      minWidth: 100,
       onRender: (item: IAssetRequestItem) => (
         <div
           style={{
-            ...statusBadgeStyles[item.status],
+            ...(statusBadgeStyles[item.status] || { backgroundColor: '#666', color: '#fff' }),
             padding: '6px 12px',
             borderRadius: '4px',
             textAlign: 'center',
@@ -154,17 +177,9 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
       ),
     },
     {
-      key: 'requestDate',
-      name: 'Request Date',
-      minWidth: 120,
-      onRender: (item: IAssetRequestItem) => (
-        <Text>{new Date(item.requestDate).toLocaleDateString()}</Text>
-      ),
-    },
-    {
       key: 'actions',
       name: 'Actions',
-      minWidth: 150,
+      minWidth: 120,
       onRender: (item: IAssetRequestItem) => (
         <Stack horizontal tokens={{ childrenGap: 10 }}>
           <PrimaryButton
@@ -208,7 +223,7 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
             {/* Filters */}
             <Stack horizontal tokens={{ childrenGap: 15 }}>
               <SearchBox
-                placeholder="Search by asset name or type..."
+                placeholder="Search by asset name or employee..."
                 value={searchText}
                 onChange={(ev, newValue) => setSearchText(newValue || '')}
                 style={{ flex: 1 }}
@@ -259,17 +274,18 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
       >
         {selectedRequest && (
           <Stack tokens={{ childrenGap: 15 }}>
-            <TextField label="Asset Type" value={selectedRequest.assetType} disabled />
+            <TextField label="Employee" value={selectedRequest.employeeName} disabled />
+            <TextField label="Employee ID" value={selectedRequest.employeeId} disabled />
+            <TextField label="Serial NO" value={selectedRequest.serialNo} disabled />
             <TextField label="Asset Name" value={selectedRequest.assetName} disabled />
-            <TextField label="Quantity" value={selectedRequest.quantity.toString()} disabled />
             <TextField label="Priority" value={selectedRequest.priority} disabled />
-            <TextField label="Status" value={selectedRequest.status} disabled />
-            <TextField label="Description" value={selectedRequest.description} multiline rows={4} disabled />
+            <TextField label="Reason for Request" value={selectedRequest.reason} multiline rows={4} disabled />
             <TextField
-              label="Required Date"
-              value={new Date(selectedRequest.requiredDate).toLocaleDateString()}
+              label="Requested Date"
+              value={selectedRequest.requestDate ? new Date(selectedRequest.requestDate).toLocaleDateString() : 'N/A'}
               disabled
             />
+            <TextField label="Status" value={selectedRequest.status} disabled />
           </Stack>
         )}
         <DialogFooter>
@@ -279,4 +295,3 @@ export const MyRequests: React.FC<IEmployeeManagementProps & { setIsLoading: (lo
     </Stack>
   );
 };
-

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Stack,
   Text,
@@ -16,49 +16,118 @@ import styles from './IncidentRequestModule.module.scss';
 import { IEmployeeManagementProps } from '../IEmployeeManagementProps';
 import { InventoryService } from '../../services/InventoryService';
 
-interface IIncidentForm {
-  employeeEmail: string;
-  assetId: string;
-  assetName: string;
-  issueType: string;
-  issueDescription: string;
-  priority: string;
-  attachmentUrl?: string;
-  reportedDate: string;
+interface IIncidentRequestModuleProps extends IEmployeeManagementProps {
+  employeeId?: string;
+  department?: string;
+  setIsLoading: (loading: boolean) => void;
 }
 
-const issueTypes: IDropdownOption[] = [
-  { key: 'hardware_damage', text: 'Hardware Damage' },
-  { key: 'software_issue', text: 'Software Issue' },
-  { key: 'not_working', text: 'Not Working' },
-  { key: 'missing_parts', text: 'Missing Parts' },
-  { key: 'performance', text: 'Performance Issue' },
-  { key: 'other', text: 'Other' },
+interface IIncidentForm {
+  employeeName: string;
+  employeeId: string;
+  employeeEmail?: string;
+  serialNo: string;
+  assetName: string;
+  incidentType: string;
+  priority: string;
+  description: string;
+  raisedDate: string;
+  status: string;
+  raisedTo: string;
+  assignedDate: string;
+}
+
+const incidentTypeOptions: IDropdownOption[] = [
+  { key: 'Hardware Issue', text: 'Hardware Issue' },
+  { key: 'Software Issue', text: 'Software Issue' },
+  { key: 'Network Issue', text: 'Network Issue' },
+  { key: 'Asset Damage', text: 'Asset Damage' },
+  { key: 'Replacement Request', text: 'Replacement Request' },
+  { key: 'Access Issue', text: 'Access Issue' },
+  { key: 'Login Issue', text: 'Login Issue' },
+  { key: 'Performance Issue', text: 'Performance Issue' },
+  { key: 'Email Issue', text: 'Email Issue' },
+  { key: 'Printer Issue', text: 'Printer Issue' },
+  { key: 'Other', text: 'Other' }
 ];
 
 const priorityOptions: IDropdownOption[] = [
-  { key: 'low', text: 'Low' },
-  { key: 'medium', text: 'Medium' },
-  { key: 'high', text: 'High' },
-  { key: 'critical', text: 'Critical' },
+  { key: 'Low', text: 'Low' },
+  { key: 'Medium', text: 'Medium' },
+  { key: 'High', text: 'High' },
+  { key: 'Critical', text: 'Critical' },
+];
+
+const raisedToOptions: IDropdownOption[] = [
+  { key: 'IT Support Team', text: 'IT Support Team' }
 ];
 
 const cardTokens: ICardTokens = { childrenMargin: 12 };
 
-export const IncidentRequestModule: React.FC<IEmployeeManagementProps & { setIsLoading: (loading: boolean) => void }> = (props) => {
+export const IncidentRequestModule: React.FC<IIncidentRequestModuleProps> = (props) => {
   const [formData, setFormData] = useState<IIncidentForm>({
-    employeeEmail: '',
-    assetId: '',
+    employeeName: props.userName || '',
+    employeeId: props.employeeId || '',
+    employeeEmail: props.userEmail || '',
+    serialNo: '',
     assetName: '',
-    issueType: '',
-    issueDescription: '',
-    priority: 'medium',
-    reportedDate: new Date().toISOString().split('T')[0],
+    incidentType: '',
+    priority: 'Medium',
+    description: '',
+    raisedDate: new Date().toLocaleString(),
+    status: 'Open',
+    raisedTo: 'IT Support Team',
+    assignedDate: '',
   });
 
+  const [assignedAssets, setAssignedAssets] = useState<any[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [message, setMessage] = useState<{ type: MessageBarType; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadAssignedAssetsForName(formData.employeeName);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [formData.employeeName]);
+
+  // Sync with props when employee context changes
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      employeeName: props.userName || '',
+      employeeId: props.employeeId || '',
+      employeeEmail: props.userEmail || '',
+    }));
+  }, [props.userName, props.employeeId, props.userEmail]);
+
+  const loadAssignedAssetsForName = async (name: string) => {
+    if (!name.trim()) {
+      setAssignedAssets([]);
+      setIsLoadingAssets(false);
+      return;
+    }
+    try {
+      setIsLoadingAssets(true);
+      const service = new InventoryService(props.spContext);
+      const details = await service.getEmployeeDetailsByName(name);
+      
+      setFormData(prev => ({
+        ...prev,
+        employeeId: details.employeeId || prev.employeeId,
+        employeeEmail: details.email || prev.employeeEmail
+      }));
+
+      const assets = await service.getEmployeeAssignedAssets(details.email || details.employeeName);
+      setAssignedAssets(assets);
+    } catch (error) {
+      console.error('Error loading assigned assets:', error);
+      setAssignedAssets([]);
+    } finally {
+      setIsLoadingAssets(false);
+    }
+  };
 
   const handleInputChange = (fieldName: string, value: any) => {
     setFormData((prev) => ({
@@ -67,48 +136,51 @@ export const IncidentRequestModule: React.FC<IEmployeeManagementProps & { setIsL
     }));
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
-
   const handleSubmit = async () => {
     try {
-      if (!formData.employeeEmail || !formData.assetId || !formData.issueType || !formData.issueDescription) {
+      if (!formData.incidentType || !formData.description) {
         setMessage({ type: MessageBarType.error, text: 'Please fill in all required fields.' });
         return;
       }
 
       setIsSubmitting(true);
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       
       const payload = {
         ...formData,
-        employeeEmail: formData.employeeEmail
+        employeeEmail: formData.employeeEmail || props.userEmail,
+        employeeName: formData.employeeName,
+        employeeId: formData.employeeId,
       };
-      await service.createIncidentRequest(payload, selectedFile || undefined);
+      
+      console.log('Submitting incident payload:', payload);
+      await service.createIncidentRequest(payload);
 
-      setMessage({ type: MessageBarType.success, text: 'Incident reported successfully! We will investigate shortly.' });
+      setMessage({ type: MessageBarType.success, text: 'Incident reported successfully!' });
 
-      // Reset form
       setTimeout(() => {
         setFormData({
-          employeeEmail: '',
-    assetId: '',
+          employeeName: props.userName || '',
+          employeeId: props.employeeId || '',
+          employeeEmail: props.userEmail || '',
+          serialNo: '',
           assetName: '',
-          issueType: '',
-          issueDescription: '',
-          priority: 'medium',
-          reportedDate: new Date().toISOString().split('T')[0],
+          incidentType: '',
+          priority: 'Medium',
+          description: '',
+          raisedDate: new Date().toLocaleString(),
+          status: 'Open',
+          raisedTo: 'IT Support Team',
+          assignedDate: '',
         });
-        setSelectedFile(null);
         setMessage(null);
+        // Refresh assigned assets in case it changes
+        loadAssignedAssetsForName(props.userName);
       }, 2000);
     } catch (error) {
       console.error('Error submitting incident:', error);
-      setMessage({ type: MessageBarType.error, text: 'Failed to report incident. Please try again.' });
+      const errorMessage = error instanceof Error ? error.message : 'Failed to report incident. Please try again.';
+      setMessage({ type: MessageBarType.error, text: `Error: ${errorMessage}` });
     } finally {
       setIsSubmitting(false);
     }
@@ -116,17 +188,28 @@ export const IncidentRequestModule: React.FC<IEmployeeManagementProps & { setIsL
 
   const handleCancel = () => {
     setFormData({
-      employeeEmail: '',
-    assetId: '',
+      employeeName: props.userName || '',
+      employeeId: props.employeeId || '',
+      employeeEmail: props.userEmail || '',
+      serialNo: '',
       assetName: '',
-      issueType: '',
-      issueDescription: '',
-      priority: 'medium',
-      reportedDate: new Date().toISOString().split('T')[0],
+      incidentType: '',
+      priority: 'Medium',
+      description: '',
+      raisedDate: new Date().toLocaleString(),
+      status: 'Open',
+      raisedTo: 'IT Support Team',
+      assignedDate: '',
     });
-    setSelectedFile(null);
     setMessage(null);
   };
+
+  const assetOptions: IDropdownOption[] = assignedAssets.map(a => ({
+    key: a.id,
+    text: `${a.assetName} (S/N: ${a.serialNumber || 'N/A'})`,
+  }));
+
+  const selectedAssetKey = assignedAssets.find(a => a.serialNumber === formData.serialNo && a.assetName === formData.assetName)?.id;
 
   return (
     <Stack tokens={{ childrenGap: 20 }}>
@@ -140,64 +223,75 @@ export const IncidentRequestModule: React.FC<IEmployeeManagementProps & { setIsL
         </MessageBar>
       )}
 
+      {!isLoadingAssets && assignedAssets.length === 0 && (
+        <MessageBar messageBarType={MessageBarType.info}>
+          You currently have no assets assigned. You can still raise generic incidents.
+        </MessageBar>
+      )}
+
       <Card>
         <Card.Section tokens={cardTokens}>
           <Stack tokens={{ childrenGap: 15 }}>
-            {/* Asset Information */}
             <Stack tokens={{ childrenGap: 10 }}>
               <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
                 Employee Information
               </Text>
-              <TextField
-                label="Employee Email *"
-                placeholder="e.g., john.doe@company.com"
-                value={formData.employeeEmail}
-                onChange={(ev, newValue) => handleInputChange('employeeEmail', newValue)}
+              <TextField 
+                label="Employee Name *" 
+                value={formData.employeeName} 
+                onChange={(ev, val) => handleInputChange('employeeName', val || '')}
                 required
-              />
-              <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c', marginTop: '15px' }}>
-                Asset Information
-              </Text>
-
-              <TextField
-                label="Asset ID *"
-                placeholder="Enter asset ID"
-                value={formData.assetId}
-                onChange={(ev, newValue) => handleInputChange('assetId', newValue)}
-                required
-              />
-
-              <TextField
-                label="Asset Name"
-                placeholder="Enter asset name"
-                value={formData.assetName}
-                onChange={(ev, newValue) => handleInputChange('assetName', newValue)}
               />
             </Stack>
 
-            {/* Issue Information */}
             <Stack tokens={{ childrenGap: 10 }}>
               <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
-                Issue Information
+                Asset Details
               </Text>
 
               <Dropdown
-                label="Issue Type *"
-                placeholder="Select issue type"
-                options={issueTypes}
-                selectedKey={formData.issueType}
-                onChange={(ev, option) => handleInputChange('issueType', option?.key)}
-                required
+                label="Select Assigned Asset"
+                placeholder={isLoadingAssets ? "Loading assets..." : "Choose one of your assigned assets"}
+                options={assetOptions}
+                selectedKey={selectedAssetKey}
+                onChange={(ev, option) => {
+                  const selected = assignedAssets.find(a => a.id === option?.key);
+                  if (selected) {
+                    handleInputChange('assetName', selected.assetName);
+                    handleInputChange('serialNo', selected.serialNumber);
+                    handleInputChange('assignedDate', selected.assignmentDate);
+                  } else {
+                    handleInputChange('assetName', '');
+                    handleInputChange('serialNo', '');
+                    handleInputChange('assignedDate', '');
+                  }
+                }}
+                disabled={isLoadingAssets}
               />
 
-              <TextField
-                label="Issue Description *"
-                multiline
-                rows={5}
-                placeholder="Describe the issue in detail..."
-                value={formData.issueDescription}
-                onChange={(ev, newValue) => handleInputChange('issueDescription', newValue)}
+              {formData.assetName && (
+                <TextField
+                  label="Asset Name"
+                  value={formData.assetName}
+                  disabled
+                />
+              )}
+
+              {formData.serialNo && (
+                <TextField
+                  label="Serial NO"
+                  value={formData.serialNo}
+                  disabled
+                />
+              )}
+
+              <Dropdown
+                label="Incident Type *"
+                options={incidentTypeOptions}
+                selectedKey={formData.incidentType}
+                onChange={(ev, option) => handleInputChange('incidentType', option?.key)}
                 required
+                placeholder="Select Incident Type"
               />
 
               <Dropdown
@@ -206,43 +300,42 @@ export const IncidentRequestModule: React.FC<IEmployeeManagementProps & { setIsL
                 selectedKey={formData.priority}
                 onChange={(ev, option) => handleInputChange('priority', option?.key)}
               />
+
+              <TextField
+                label="Description *"
+                multiline
+                rows={5}
+                placeholder="Describe the issue..."
+                value={formData.description}
+                onChange={(ev, newValue) => handleInputChange('description', newValue)}
+                required
+              />
+
+              <Dropdown
+                label="Raised To"
+                options={raisedToOptions}
+                selectedKey={formData.raisedTo}
+                onChange={(ev, option) => handleInputChange('raisedTo', option?.key)}
+                placeholder="Select Team"
+              />
             </Stack>
 
-            {/* Attachment */}
             <Stack tokens={{ childrenGap: 10 }}>
               <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
-                Attachment
+                Timeline & Status
               </Text>
-
-              <input
-                type="file"
-                accept="image/*,.pdf,.doc,.docx"
-                onChange={handleFileChange}
-                style={{
-                  padding: '10px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              />
-              {selectedFile && (
-                <Text variant="small" style={{ color: '#27ae60' }}>
-                  Selected: {selectedFile.name}
-                </Text>
-              )}
-            </Stack>
-
-            {/* Reported Date */}
-            <Stack tokens={{ childrenGap: 10 }}>
               <TextField
-                label="Reported Date"
-                type="date"
-                value={formData.reportedDate}
-                onChange={(ev, newValue) => handleInputChange('reportedDate', newValue)}
+                label="Raised Date"
+                value={formData.raisedDate}
+                readOnly
+              />
+              <TextField
+                label="Status"
+                value={formData.status}
+                readOnly
               />
             </Stack>
 
-            {/* Action Buttons */}
             <Stack horizontal tokens={{ childrenGap: 10 }}>
               <PrimaryButton
                 text="Report Incident"

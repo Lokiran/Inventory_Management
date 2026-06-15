@@ -5,7 +5,7 @@ import {
   IPropertyPaneConfiguration,
   PropertyPaneTextField,
 } from '@microsoft/sp-property-pane';
-import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import { BaseClientSideWebPart, WebPartContext } from '@microsoft/sp-webpart-base';
 
 import * as strings from 'EmployeeManagementWebPartStrings';
 import { EmployeeManagementPanel } from './components/EmployeeManagementPanel';
@@ -13,7 +13,6 @@ import { IEmployeeManagementProps } from './components/IEmployeeManagementProps'
 
 export interface IEmployeeManagementWebPartProps {
   description: string;
-  apiBaseUrl: string;
 }
 
 export default class EmployeeManagementWebPart extends BaseClientSideWebPart<IEmployeeManagementWebPartProps> {
@@ -25,10 +24,10 @@ export default class EmployeeManagementWebPart extends BaseClientSideWebPart<IEm
     const element: React.ReactElement<IEmployeeManagementProps> = React.createElement(
       EmployeeManagementPanel,
       {
-        apiBaseUrl: this.properties.apiBaseUrl,
         userEmail: this.context.pageContext.user.email,
         userName: this.context.pageContext.user.displayName,
         webUrl: this.context.pageContext.web.absoluteUrl,
+        spContext: this.context as WebPartContext
       }
     );
 
@@ -54,9 +53,9 @@ export default class EmployeeManagementWebPart extends BaseClientSideWebPart<IEm
             {
               groupName: strings.BasicGroupName,
               groupFields: [
-                PropertyPaneTextField('apiBaseUrl', {
-                  label: 'API Base URL',
-                  placeholder: 'https://your-api.com/api',
+                PropertyPaneTextField('description', {
+                  label: 'Web Part Description',
+                  placeholder: 'Employee Management',
                 }),
               ],
             },

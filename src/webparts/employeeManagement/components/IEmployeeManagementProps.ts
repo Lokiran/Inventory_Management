@@ -1,6 +1,8 @@
+import { WebPartContext } from '@microsoft/sp-webpart-base';
+
 export interface IEmployeeManagementProps {
-  apiBaseUrl: string;
   userEmail: string;
   userName: string;
   webUrl: string;
+  spContext: WebPartContext;
 }

@@ -56,7 +56,7 @@ export const IncidentHistory: React.FC<IEmployeeManagementProps & { setIsLoading
 
   useEffect(() => {
     loadIncidents();
-  }, []);
+  }, [props.userEmail]);
 
   useEffect(() => {
     filterIncidents();
@@ -65,7 +65,7 @@ export const IncidentHistory: React.FC<IEmployeeManagementProps & { setIsLoading
   const loadIncidents = async () => {
     try {
       props.setIsLoading(true);
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       const data = await service.getEmployeeIncidentHistory(props.userEmail);
       setIncidents(data);
     } catch (error) {

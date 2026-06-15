@@ -42,7 +42,7 @@ export const MyAssignedAssets: React.FC<IEmployeeManagementProps & { setIsLoadin
 
   useEffect(() => {
     loadAssets();
-  }, []);
+  }, [props.userEmail]);
 
   useEffect(() => {
     filterAssets();
@@ -51,7 +51,7 @@ export const MyAssignedAssets: React.FC<IEmployeeManagementProps & { setIsLoadin
   const loadAssets = async () => {
     try {
       props.setIsLoading(true);
-      const service = new InventoryService(props.apiBaseUrl);
+      const service = new InventoryService(props.spContext);
       const data = await service.getEmployeeAssignedAssets(props.userEmail);
       setAssets(data);
     } catch (error) {
