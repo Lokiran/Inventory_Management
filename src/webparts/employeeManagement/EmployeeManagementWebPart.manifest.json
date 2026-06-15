@@ -19,8 +19,7 @@
       "description": { "default": "Manage asset requests, incidents, and assigned assets" },
       "officeFabricIconFontName": "Settings",
       "properties": {
-        "description": "Employee Management Web Part",
-        "apiBaseUrl": "https://your-api.com/api"
+        "description": "Employee Management Web Part"
       }
     }
   ]
