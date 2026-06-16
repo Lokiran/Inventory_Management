@@ -9,10 +9,19 @@
           "manifest": "./src/webparts/inventoryManagement/InventoryManagementWebPart.manifest.json"
         }
       ]
+    },
+    "employee-management-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/employeeManagement/EmployeeManagementWebPart.js",
+          "manifest": "./src/webparts/employeeManagement/EmployeeManagementWebPart.manifest.json"
+        }
+      ]
     }
   },
   "externals": {},
   "localizedResources": {
-    "InventoryManagementWebPartStrings": "lib/webparts/inventoryManagement/loc/{locale}.js"
+    "InventoryManagementWebPartStrings": "lib/webparts/inventoryManagement/loc/{locale}.js",
+    "EmployeeManagementWebPartStrings": "lib/webparts/employeeManagement/loc/{locale}.js"
   }
 }

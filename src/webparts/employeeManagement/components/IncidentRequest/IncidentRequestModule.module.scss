@@ -1,0 +1,26 @@
+.incidentRequestModule {
+  .formSection {
+    border-left: 3px solid #e74c3c;
+    padding-left: 15px;
+    margin-bottom: 20px;
+  }
+
+  .attachmentUpload {
+    border: 2px dashed #0078d4;
+    padding: 20px;
+    border-radius: 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s;
+
+    &:hover {
+      background-color: #f3f2f1;
+    }
+  }
+
+  .actionButtons {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+}
