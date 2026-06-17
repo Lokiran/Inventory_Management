@@ -1474,7 +1474,9 @@ export class InventoryService {
     let mappingLastErr: any;
     for (const p of mappingPayloadsToTry) {
       try {
-        await mappingList.items.add(p);
+        const filteredPayload = InventoryService._filterPayloadBySchema(p, mappingFields);
+        console.log(`Attempting to write mapping payload for ${employeeName}:`, JSON.stringify(filteredPayload));
+        await mappingList.items.add(filteredPayload);
         mappingSuccess = true;
         console.log(`Successfully added mapping record for ${employeeName}`);
         break;
@@ -1486,6 +1488,34 @@ export class InventoryService {
     if (!mappingSuccess) {
       console.warn(`Failed to write mapping record for ${employeeName} to Mapping List.`, mappingLastErr);
     }
+  }
+
+  private static _filterPayloadBySchema(payload: any, fields: any[]): any {
+    const cleanPayload: any = {};
+    const lowerFields = fields.map((f: any) => (f.InternalName || "").toLowerCase());
+    
+    // Always copy Title
+    cleanPayload["Title"] = payload["Title"] || "";
+
+    for (const key of Object.keys(payload)) {
+      if (key === "Title") continue;
+      
+      const keyLower = key.toLowerCase();
+      // Handle User ID fields (e.g., EmployeeId, EmployeId)
+      if (keyLower.endsWith("id")) {
+        const baseKey = key.substring(0, key.length - 2);
+        const baseKeyLower = baseKey.toLowerCase();
+        if (lowerFields.indexOf(baseKeyLower) >= 0 || lowerFields.indexOf(keyLower) >= 0) {
+          cleanPayload[key] = payload[key];
+          continue;
+        }
+      }
+      
+      if (lowerFields.indexOf(keyLower) >= 0) {
+        cleanPayload[key] = payload[key];
+      }
+    }
+    return cleanPayload;
   }
 
   public static async assignAssetsToEmployee(
@@ -1664,7 +1694,9 @@ export class InventoryService {
     await Promise.all(updatePromises);
   }
 
-  public static async syncExistingAssignmentsToMappingList(adminName: string): Promise<void> {
+  public static async syncExistingAssignmentsToMappingList(adminName: string): Promise<{ checkedCount: number; syncedCount: number }> {
+    let checkedCount = 0;
+    let syncedCount = 0;
     try {
       console.log("Starting Mapping List sync...");
       const list = await InventoryService.getInventoryList();
@@ -1672,17 +1704,25 @@ export class InventoryService {
 
       // Filter for assigned items matching the 5 active employees
       const assignedItems = items.filter(item => {
-        const statusLower = (item.status || '').toLowerCase();
-        const isAssigned = statusLower === 'assigned' || statusLower.indexOf('assigned to') >= 0;
-        if (!isAssigned) return false;
+        return EMPLOYEES.some(emp => {
+          const normalize = (value: string | undefined): string => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const activeUser = normalize(emp.name);
+          if (!activeUser) return false;
 
-        const employeeName = item.assignedTo || "";
-        return EMPLOYEES.some(e => e.name.toLowerCase() === employeeName.toLowerCase());
+          const assignedNorm = normalize(item.assignedTo);
+          const isAssigned = assignedNorm && (assignedNorm === activeUser || assignedNorm.includes(activeUser) || activeUser.includes(assignedNorm));
+          const isNoted = (item.note || '').toLowerCase().includes('assigned to:') && normalize(item.note).includes(activeUser);
+          const isStatus = (item.status || '').toLowerCase().includes('assigned to:') && normalize(item.status).includes(activeUser);
+
+          return !!(isAssigned || isNoted || isStatus);
+        });
       });
+
+      checkedCount = assignedItems.length;
 
       if (assignedItems.length === 0) {
         console.log("No assigned assets found for the 5 active employees.");
-        return;
+        return { checkedCount, syncedCount };
       }
 
       await InventoryService._ensureMappingListFields();
@@ -1725,13 +1765,25 @@ export class InventoryService {
           continue;
         }
 
-        const assetAssignedTo = asset.assignedTo || "";
-        console.log(`Syncing missing assigned asset to Mapping List: ${asset.assetName || asset.title} (${asset.serialNumber}) for ${assetAssignedTo}`);
+        const employee = EMPLOYEES.find(emp => {
+          const normalize = (value: string | undefined): string => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const activeUser = normalize(emp.name);
+          if (!activeUser) return false;
 
-        const employee = EMPLOYEES.find(e => e.name.toLowerCase() === assetAssignedTo.toLowerCase());
-        const employeeName = employee ? employee.name : assetAssignedTo;
+          const assignedNorm = normalize(asset.assignedTo);
+          const isAssigned = assignedNorm && (assignedNorm === activeUser || assignedNorm.includes(activeUser) || activeUser.includes(assignedNorm));
+          const isNoted = (asset.note || '').toLowerCase().includes('assigned to:') && normalize(asset.note).includes(activeUser);
+          const isStatus = (asset.status || '').toLowerCase().includes('assigned to:') && normalize(asset.status).includes(activeUser);
+
+          return !!(isAssigned || isNoted || isStatus);
+        });
+
+        const employeeName = employee ? employee.name : (asset.assignedTo || "Unknown");
         const employeeId = employee ? employee.id : "";
         const employeeEmail = employee ? employee.email : "";
+
+        const assetAssignedTo = employeeName;
+        console.log(`Syncing missing assigned asset to Mapping List: ${asset.assetName || asset.title} (${asset.serialNumber}) for ${assetAssignedTo}`);
 
         // Find matching request
         let priority = "Medium";
@@ -1801,12 +1853,36 @@ export class InventoryService {
             reason,
             finalAssignedDate
           );
+          syncedCount++;
         } catch (err) {
           console.warn(`Failed to write synced record for ${employeeName} to Mapping List.`, err);
         }
       }
     } catch (e) {
       console.error("Failed to sync existing assignments to Mapping List:", e);
+      throw e;
+    }
+    return { checkedCount, syncedCount };
+  }
+
+  public static async diagnoseMappingListFields(): Promise<string> {
+    try {
+      const mappingList = await InventoryService.getMappingList();
+      const fields: any[] = await mappingList.fields.select("InternalName", "Title", "TypeAsString")();
+      const items = await mappingList.items.select("ID")();
+
+      let output = `Mapping List Diagnostics:\n`;
+      output += `- List URL Title: "${mappingList.Title || "Mapping List"}"\n`;
+      output += `- Record Count: ${items.length}\n`;
+      output += `- Available Fields in List:\n`;
+
+      fields.forEach((f: any) => {
+        output += `  * InternalName: "${f.InternalName}", Title: "${f.Title}", Type: "${f.TypeAsString}"\n`;
+      });
+
+      return output;
+    } catch (e: any) {
+      return `Failed to diagnose Mapping List schema. Error: ${e.message || JSON.stringify(e)}`;
     }
   }
 

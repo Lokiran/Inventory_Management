@@ -5,7 +5,7 @@ import {
   type IPropertyPaneConfiguration,
   PropertyPaneTextField
 } from '@microsoft/sp-property-pane';
-import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
+import { BaseClientSideWebPart, WebPartContext } from '@microsoft/sp-webpart-base';
 import { IReadonlyTheme } from '@microsoft/sp-component-base';
 
 import * as strings from 'InventoryManagementWebPartStrings';
@@ -32,7 +32,8 @@ export default class InventoryManagementWebPart extends BaseClientSideWebPart<II
         environmentMessage: this._environmentMessage,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
         userDisplayName: this.context.pageContext.user.displayName,
-        userEmail: this.context.pageContext.user.email
+        userEmail: this.context.pageContext.user.email,
+        spContext: this.context as WebPartContext
       }
     );
 

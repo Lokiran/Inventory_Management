@@ -19,8 +19,8 @@ import {
 } from '@fluentui/react';
 import { Card, ICardTokens } from '@uifabric/react-cards';
 import styles from './IncidentHistory.module.scss';
-import { IEmployeeManagementProps } from '../IEmployeeManagementProps';
-import { InventoryService } from '../../services/InventoryService';
+import { IInventoryManagementProps } from '../../models/IInventoryManagementProps';
+import { IncidentService } from '../../services/IncidentService';
 
 interface IIncidentHistoryItem {
   id: string;
@@ -46,7 +46,7 @@ const statusBadgeStyles: { [key: string]: { backgroundColor: string; color: stri
   Closed: { backgroundColor: '#666', color: '#fff' },
 };
 
-export const IncidentHistory: React.FC<IEmployeeManagementProps & { setIsLoading: (loading: boolean) => void }> = (props) => {
+export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoading: (loading: boolean) => void }> = (props) => {
   const [incidents, setIncidents] = useState<IIncidentHistoryItem[]>([]);
   const [filteredIncidents, setFilteredIncidents] = useState<IIncidentHistoryItem[]>([]);
   const [searchText, setSearchText] = useState('');
@@ -65,7 +65,7 @@ export const IncidentHistory: React.FC<IEmployeeManagementProps & { setIsLoading
   const loadIncidents = async () => {
     try {
       props.setIsLoading(true);
-      const service = new InventoryService(props.spContext);
+      const service = new IncidentService(props.spContext);
       const data = await service.getEmployeeIncidentHistory(props.userEmail);
       setIncidents(data);
     } catch (error) {
@@ -218,112 +218,113 @@ Generated: ${new Date().toLocaleString()}
   ];
 
   return (
-    <Stack tokens={{ childrenGap: 20 }}>
-      <Text variant="xLarge" block style={{ fontWeight: 600 }}>
-        Incident History
-      </Text>
+    <div className={styles.incidentHistory}>
+      <Stack tokens={{ childrenGap: 20 }}>
+        <Text variant="xLarge" block style={{ fontWeight: 600 }}>
+          Incident History
+        </Text>
 
-      <Card>
-        <Card.Section tokens={cardTokens}>
-          <Stack tokens={{ childrenGap: 15 }}>
-            {/* Filters */}
-            <Stack horizontal tokens={{ childrenGap: 15 }} wrap>
-              <SearchBox
-                placeholder="Search by incident ID, asset name, or issue type..."
-                value={searchText}
-                onChange={(ev, newValue) => setSearchText(newValue || '')}
-                style={{ flex: 1, minWidth: '250px' }}
-              />
-              <Dropdown
-                placeholder="Filter by status"
-                options={statusFilterOptions}
-                onChange={(ev, option) => setStatusFilter(option?.key as string | null)}
-                style={{ width: '200px' }}
-              />
-            </Stack>
-
-            {/* Items Count */}
-            <Text variant="small" style={{ color: '#666' }}>
-              Showing {filteredIncidents.length} of {incidents.length} incidents
-            </Text>
-
-            {/* Details List */}
-            {filteredIncidents.length > 0 ? (
-              <DetailsList
-                items={filteredIncidents}
-                columns={columns}
-                setKey="set-items"
-                layoutMode={DetailsListLayoutMode.justified}
-                selectionMode={SelectionMode.none}
-              />
-            ) : (
-              <Stack horizontalAlign="center" verticalAlign="center" style={{ minHeight: '300px' }}>
-                <Icon iconName="ClearFilter" style={{ fontSize: '48px', color: '#ccc', marginBottom: '10px' }} />
-                <Text variant="large" style={{ color: '#666' }}>
-                  No incidents found.
-                </Text>
+        <Card>
+          <Card.Section tokens={cardTokens}>
+            <Stack tokens={{ childrenGap: 15 }}>
+              {/* Filters */}
+              <Stack horizontal tokens={{ childrenGap: 15 }} wrap>
+                <SearchBox
+                  placeholder="Search by incident ID, asset name, or issue type..."
+                  value={searchText}
+                  onChange={(ev, newValue) => setSearchText(newValue || '')}
+                  style={{ flex: 1, minWidth: '250px' }}
+                />
+                <Dropdown
+                  placeholder="Filter by status"
+                  options={statusFilterOptions}
+                  onChange={(ev, option) => setStatusFilter(option?.key as string | null)}
+                  style={{ width: '200px' }}
+                />
               </Stack>
-            )}
-          </Stack>
-        </Card.Section>
-      </Card>
 
-      {/* Detail Dialog */}
-      <Dialog
-        hidden={!showDetailDialog}
-        onDismiss={() => setShowDetailDialog(false)}
-        dialogContentProps={{
-          type: DialogType.normal,
-          title: 'Incident Details',
-          closeButtonAriaLabel: 'Close',
-        }}
-        minWidth={600}
-      >
-        {selectedIncident && (
-          <Stack tokens={{ childrenGap: 15 }}>
-            <TextField label="Incident ID" value={selectedIncident.incidentId} disabled />
-            <TextField label="Asset Name" value={selectedIncident.assetName} disabled />
-            <TextField label="Issue Type" value={selectedIncident.issueType} disabled />
-            <TextField label="Priority" value={selectedIncident.priority} disabled />
-            <TextField label="Status" value={selectedIncident.status} disabled />
-            <TextField
-              label="Issue Description"
-              value={selectedIncident.issueDescription}
-              multiline
-              rows={4}
-              disabled
-            />
-            {selectedIncident.resolution && (
+              {/* Items Count */}
+              <Text variant="small" style={{ color: '#666' }}>
+                Showing {filteredIncidents.length} of {incidents.length} incidents
+              </Text>
+
+              {/* Details List */}
+              {filteredIncidents.length > 0 ? (
+                <DetailsList
+                  items={filteredIncidents}
+                  columns={columns}
+                  setKey="set-items"
+                  layoutMode={DetailsListLayoutMode.justified}
+                  selectionMode={SelectionMode.none}
+                />
+              ) : (
+                <Stack horizontalAlign="center" verticalAlign="center" style={{ minHeight: '300px' }}>
+                  <Icon iconName="ClearFilter" style={{ fontSize: '48px', color: '#ccc', marginBottom: '10px' }} />
+                  <Text variant="large" style={{ color: '#666' }}>
+                    No incidents found.
+                  </Text>
+                </Stack>
+              )}
+            </Stack>
+          </Card.Section>
+        </Card>
+
+        {/* Detail Dialog */}
+        <Dialog
+          hidden={!showDetailDialog}
+          onDismiss={() => setShowDetailDialog(false)}
+          dialogContentProps={{
+            type: DialogType.normal,
+            title: 'Incident Details',
+            closeButtonAriaLabel: 'Close',
+          }}
+          minWidth={600}
+        >
+          {selectedIncident && (
+            <Stack tokens={{ childrenGap: 15 }}>
+              <TextField label="Incident ID" value={selectedIncident.incidentId} disabled />
+              <TextField label="Asset Name" value={selectedIncident.assetName} disabled />
+              <TextField label="Issue Type" value={selectedIncident.issueType} disabled />
+              <TextField label="Priority" value={selectedIncident.priority} disabled />
+              <TextField label="Status" value={selectedIncident.status} disabled />
               <TextField
-                label="Resolution"
-                value={selectedIncident.resolution}
+                label="Issue Description"
+                value={selectedIncident.issueDescription}
                 multiline
                 rows={4}
                 disabled
               />
-            )}
-            <TextField
-              label="Reported Date"
-              value={new Date(selectedIncident.reportedDate).toLocaleString()}
-              disabled
-            />
-            {selectedIncident.resolvedDate && (
+              {selectedIncident.resolution && (
+                <TextField
+                  label="Resolution"
+                  value={selectedIncident.resolution}
+                  multiline
+                  rows={4}
+                  disabled
+                />
+              )}
               <TextField
-                label="Resolved Date"
-                value={new Date(selectedIncident.resolvedDate).toLocaleString()}
+                label="Reported Date"
+                value={new Date(selectedIncident.reportedDate).toLocaleString()}
                 disabled
               />
-            )}
-            {selectedIncident.assignedTo && (
-              <TextField label="Assigned To" value={selectedIncident.assignedTo} disabled />
-            )}
-          </Stack>
-        )}
-        <DialogFooter>
-          <PrimaryButton text="Close" onClick={() => setShowDetailDialog(false)} />
-        </DialogFooter>
-      </Dialog>
-    </Stack>
+              {selectedIncident.resolvedDate && (
+                <TextField
+                  label="Resolved Date"
+                  value={new Date(selectedIncident.resolvedDate).toLocaleString()}
+                  disabled
+                />
+              )}
+              {selectedIncident.assignedTo && (
+                <TextField label="Assigned To" value={selectedIncident.assignedTo} disabled />
+              )}
+            </Stack>
+          )}
+          <DialogFooter>
+            <PrimaryButton text="Close" onClick={() => setShowDetailDialog(false)} />
+          </DialogFooter>
+        </Dialog>
+      </Stack>
+    </div>
   );
 };
-

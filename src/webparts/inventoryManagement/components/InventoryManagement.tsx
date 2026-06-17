@@ -43,6 +43,8 @@ import { Dashboard } from './Dashboard';
 import { AssetTracking } from './AssetTracking';
 import { INotification } from '../models/INotification';
 import { NotificationCenter } from './NotificationCenter';
+import { IncidentRequestModule } from './IncidentRequest/IncidentRequestModule';
+import { IncidentHistory } from './IncidentHistory/IncidentHistory';
 
 export interface IInventoryManagementState {
   items: IInventoryItem[];
@@ -70,6 +72,12 @@ export interface IInventoryManagementState {
   returnRequestsLoading: boolean;
   selectedAssetForReturn: IInventoryItem | undefined;
   isReturnFormOpen: boolean;
+  activeUserDisplayName: string;
+  activeUserEmail: string;
+  syncInProgress?: boolean;
+  syncMessage?: string;
+  syncMessageType?: MessageBarType;
+  diagnosticInfo?: string;
 }
 
 export default class InventoryManagement extends React.Component<IInventoryManagementProps, IInventoryManagementState> {
@@ -97,8 +105,8 @@ export default class InventoryManagement extends React.Component<IInventoryManag
   };
 
   private _getNotifications = (): INotification[] => {
-    const { items, requests } = this.state;
-    const currentUser = this.props.userDisplayName;
+    const { items, requests, activeUserDisplayName } = this.state;
+    const currentUser = activeUserDisplayName;
     const effectiveRole = this.state.previewRole || this.state.userRole;
     const isAdminOrManager = effectiveRole === 'Admin' || effectiveRole === 'Inventory Manager';
     const isAdmin = effectiveRole === 'Admin';
@@ -353,6 +361,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       console.warn("localStorage parsing failed", e);
     }
 
+    const activeName = props.userDisplayName;
+    const activeEmail = props.userEmail;
+
     this.state = {
       items: [],
       requests: [],
@@ -376,7 +387,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       returnRequests: [],
       returnRequestsLoading: true,
       selectedAssetForReturn: undefined,
-      isReturnFormOpen: false
+      isReturnFormOpen: false,
+      activeUserDisplayName: activeName,
+      activeUserEmail: activeEmail
     };
   }
 
@@ -389,7 +402,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
     // Dynamically auto-sync existing assigned assets of our 5 active users to the Mapping List
     try {
-      await InventoryService.syncExistingAssignmentsToMappingList(this.props.userDisplayName);
+      await InventoryService.syncExistingAssignmentsToMappingList(this.state.activeUserDisplayName);
     } catch (e) {
       console.warn("Failed to auto-sync existing assignments to Mapping List:", e);
     }
@@ -397,9 +410,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
   private _resolveUserRole = async (): Promise<void> => {
     try {
-      const normalizedDisplayName = (this.props.userDisplayName || '').toLowerCase().trim();
+      const normalizedDisplayName = (this.state.activeUserDisplayName || this.props.userDisplayName || '').toLowerCase().trim();
       const compactDisplayName = normalizedDisplayName.replace(/\s+/g, '');
-      const normalizedEmail = (this.props.userEmail || '').toLowerCase().trim();
+      const normalizedEmail = (this.state.activeUserEmail || this.props.userEmail || '').toLowerCase().trim();
 
       const forcedRoleByUserKey: Record<string, 'Admin' | 'Inventory Manager' | 'Inventory Employee'> = {
         'kiran.reddy@3bh3kf.onmicrosoft.com': 'Admin',
@@ -462,6 +475,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       });
     }
   };
+
 
   private _loadInventory = async (): Promise<void> => {
     try {
@@ -534,14 +548,14 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         assetId: selectedAssetForReturn.id,
         assetName: selectedAssetForReturn.assetName || selectedAssetForReturn.title,
         serialNumber: selectedAssetForReturn.serialNumber,
-        requesterName: this.props.userDisplayName,
-        requesterEmail: this.props.userEmail,
+        requesterName: this.state.activeUserDisplayName,
+        requesterEmail: this.state.activeUserEmail,
         requestDate: new Date().toISOString().split('T')[0],
         returnReason: reason,
         proposedCondition: condition
       };
 
-      await InventoryService.addReturnRequest(reqPayload, this.props.userDisplayName);
+      await InventoryService.addReturnRequest(reqPayload, this.state.activeUserDisplayName);
 
       await this._loadInventory();
       await this._loadReturnRequests();
@@ -563,7 +577,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
   ): Promise<void> => {
     try {
       this.setState({ returnRequestsLoading: true });
-      await InventoryService.updateReturnRequestStatus(requestId, status, comment, this.props.userDisplayName, finalCondition);
+      await InventoryService.updateReturnRequestStatus(requestId, status, comment, this.state.activeUserDisplayName, finalCondition);
 
       await this._loadInventory();
       await this._loadReturnRequests();
@@ -584,7 +598,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         status: 'In Stock'
       };
 
-      await InventoryService.addItem(newAsset, this.props.userDisplayName);
+      await InventoryService.addItem(newAsset, this.state.activeUserDisplayName);
       await this._loadInventory(); // Refresh list
       await this._loadAuditLogs(); // Refresh audit logs
     } catch (error: any) {
@@ -627,7 +641,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       await InventoryService.addRequest({
         ...requestData,
         status: initialStatus
-      } as any, this.props.userDisplayName);
+      } as any, this.state.activeUserDisplayName);
       console.log('Successfully saved request to SharePoint');
       await this._loadRequests(); // Refresh list from SharePoint
       await this._loadAuditLogs(); // Refresh audit logs
@@ -648,7 +662,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
           requests: prevState.requests.map(r => r.id === request.id ? { ...r, status: 'Approved' } : r)
         }));
       } else {
-        await InventoryService.updateRequestStatus(parseInt(request.id, 10), 'Approved', this.props.userDisplayName);
+        await InventoryService.updateRequestStatus(parseInt(request.id, 10), 'Approved', this.state.activeUserDisplayName);
         await this._loadRequests();
         await this._loadAuditLogs();
       }
@@ -672,7 +686,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         await InventoryService.updateRequestStatus(
           parseInt(request.id, 10),
           'Declined',
-          this.props.userDisplayName,
+          this.state.activeUserDisplayName,
           reason
         );
         await this._loadRequests();
@@ -695,7 +709,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
           requests: prevState.requests.map(r => r.id === request.id ? { ...r, assetStatus: 'Approved' } : r)
         }));
       } else {
-        await InventoryService.updateAssetStatus(parseInt(request.id, 10), 'Approved', this.props.userDisplayName);
+        await InventoryService.updateAssetStatus(parseInt(request.id, 10), 'Approved', this.state.activeUserDisplayName);
         await this._loadRequests();
         await this._loadAuditLogs();
       }
@@ -713,7 +727,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       this.setState({ isTrackingActionInProgress: true, errorMessage: undefined });
       const employee = EMPLOYEES.find(e => e.name.toLowerCase() === employeeName.toLowerCase());
       const employeeId = employee ? employee.id : "";
-      await InventoryService.assignAssetsToEmployee(assetIds, employeeName, employeeEmail, this.props.userDisplayName, employeeId);
+      await InventoryService.assignAssetsToEmployee(assetIds, employeeName, employeeEmail, this.state.activeUserDisplayName, employeeId);
       await this._loadInventory();
       await this._loadAuditLogs();
     } catch (error: any) {
@@ -722,6 +736,59 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       });
     } finally {
       this.setState({ isTrackingActionInProgress: false });
+    }
+  };
+
+  private _onSyncAssignedAssets = async (): Promise<void> => {
+    try {
+      this.setState({
+        syncInProgress: true,
+        syncMessage: 'Synchronizing assigned assets with SharePoint Mapping List...',
+        syncMessageType: MessageBarType.info
+      });
+
+      const result = await InventoryService.syncExistingAssignmentsToMappingList(this.state.activeUserDisplayName);
+
+      this.setState({
+        syncInProgress: false,
+        syncMessage: `Synchronization complete! Verified ${result.checkedCount} assigned assets. Successfully checked and synchronized ${result.syncedCount} missing mapping records.`,
+        syncMessageType: MessageBarType.success
+      });
+
+      // Reload inventory to ensure consistency
+      await this._loadInventory();
+    } catch (e: any) {
+      console.error("Manual sync failed:", e);
+      this.setState({
+        syncInProgress: false,
+        syncMessage: `Failed to synchronize mapping records: ${e.message || JSON.stringify(e)}`,
+        syncMessageType: MessageBarType.error
+      });
+    }
+  };
+
+  private _onRunDiagnostics = async (): Promise<void> => {
+    try {
+      this.setState({
+        syncInProgress: true,
+        syncMessage: 'Running Mapping List diagnostic check...',
+        syncMessageType: MessageBarType.info
+      });
+
+      const diagnosticInfo = await InventoryService.diagnoseMappingListFields();
+
+      this.setState({
+        syncInProgress: false,
+        diagnosticInfo,
+        syncMessage: 'Diagnostic check complete! Columns and item counts retrieved successfully.',
+        syncMessageType: MessageBarType.success
+      });
+    } catch (e: any) {
+      this.setState({
+        syncInProgress: false,
+        syncMessage: `Failed to retrieve diagnostics: ${e.message || JSON.stringify(e)}`,
+        syncMessageType: MessageBarType.error
+      });
     }
   };
 
@@ -1039,12 +1106,24 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       description,
       isDarkTheme,
       environmentMessage,
-      hasTeamsContext,
-      userDisplayName
+      hasTeamsContext
     } = this.props;
 
-    const { items, isAssetFormOpen, isRequestFormOpen, auditLogs, auditLogsLoading, userRole, previewRole, roleLoading, roleGroups, requestActionInProgressId, requestSearchId } = this.state;
-
+    const {
+      items,
+      isAssetFormOpen,
+      isRequestFormOpen,
+      auditLogs,
+      auditLogsLoading,
+      userRole,
+      previewRole,
+      roleLoading,
+      roleGroups,
+      requestActionInProgressId,
+      requestSearchId,
+      activeUserDisplayName,
+      activeUserEmail
+    } = this.state;
 
     const effectiveRole = previewRole || userRole;
 
@@ -1052,9 +1131,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
     const isManager = effectiveRole === 'Inventory Manager';
     const isEmployee = effectiveRole === 'Inventory Employee';
 
-    const myAssets = items.filter(item => this._isAssetAssignedToCurrentUser(item, userDisplayName || ''));
+    const myAssets = items.filter(item => this._isAssetAssignedToCurrentUser(item, activeUserDisplayName || ''));
 
-    const myRequests = this.state.requests.filter(request => this._isRequestOwnedByCurrentUser(request.requesterName || '', userDisplayName || ''));
+    const myRequests = this.state.requests.filter(request => this._isRequestOwnedByCurrentUser(request.requesterName || '', activeUserDisplayName || ''));
     const myApprovedRequests = myRequests.filter(request => (request.status || '').toLowerCase().includes('approv'));
 
     const adminQueueRequests = this.state.requests.filter(request => (request.status || '').toLowerCase().includes('approv'));
@@ -1079,7 +1158,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
           <div className={styles.heroSection}>
             <div className={styles.heroText}>
               <h2>Inventory Management</h2>
-              <p>Welcome back, {escape(userDisplayName)}!</p>
+              <p>Welcome back, {escape(activeUserDisplayName)}!</p>
               <p className={styles.smallText}>
                 Role: <strong>{effectiveRole}</strong>
               </p>
@@ -1092,6 +1171,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                   SharePoint Groups: {escape(roleGroups.join(', '))}
                 </p>
               )}
+
             </div>
             <img
               alt="Welcome"
@@ -1130,6 +1210,15 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     text="Request Asset"
                     onClick={() => this.setState({ isRequestFormOpen: true })}
                     iconProps={{ iconName: 'Send' }}
+                  />
+                </div>
+              )}
+              {(isAdmin || isManager || isEmployee) && (
+                <div className={styles.actionButtonContainer}>
+                  <PrimaryButton
+                    text="Raise Incident"
+                    onClick={() => this.setState({ selectedTabKey: 'RaiseIncident' })}
+                    iconProps={{ iconName: 'AlertSolid' }}
                   />
                 </div>
               )}
@@ -1199,6 +1288,26 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                   onClearAllNotifications={this._clearAllNotifications}
                   onNotificationAction={this._handleNotificationAction}
                 />
+              </PivotItem>
+              <PivotItem headerText="Raise Incident" itemIcon="AlertSolid" itemKey="RaiseIncident">
+                <div style={{ marginTop: '20px' }}>
+                  <IncidentRequestModule
+                    {...this.props}
+                    userDisplayName={activeUserDisplayName}
+                    userEmail={activeUserEmail}
+                    setIsLoading={(loading) => this.setState({ loading })}
+                  />
+                </div>
+              </PivotItem>
+              <PivotItem headerText="Incident History" itemIcon="History" itemKey="IncidentHistory">
+                <div style={{ marginTop: '20px' }}>
+                  <IncidentHistory
+                    {...this.props}
+                    userDisplayName={activeUserDisplayName}
+                    userEmail={activeUserEmail}
+                    setIsLoading={(loading) => this.setState({ loading })}
+                  />
+                </div>
               </PivotItem>
 
               {/* Admin-only Inventory */}
@@ -1368,7 +1477,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     loading={auditLogsLoading}
                     errorMessage={undefined}
                     currentUserRole={effectiveRole}
-                    currentUserName={userDisplayName}
+                    currentUserName={activeUserDisplayName}
                   />
                 </PivotItem>
               )}
@@ -1400,7 +1509,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     <div style={{ backgroundColor: 'var(--surface-color, #ffffff)', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                       <DetailsList
                         items={EMPLOYEES.map(emp => {
-                          const realName = emp.jobTitle === 'Admin' ? (this.props.userDisplayName || emp.name) : emp.name;
+                          const realName = emp.jobTitle === 'Admin' ? (activeUserDisplayName || emp.name) : emp.name;
                           const assignedItems = items.filter(i => this._isAssetAssignedToCurrentUser(i, realName));
                           const assetTypes = Array.from(new Set(assignedItems.map(a => a.assetType))).filter(t => t).join(', ');
                           return {
@@ -1482,8 +1591,8 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                       items={items}
                       employees={EMPLOYEES}
                       currentUserRole={effectiveRole}
-                      currentUserName={this.props.userDisplayName}
-                      currentUserEmail={this.props.userEmail}
+                      currentUserName={activeUserDisplayName}
+                      currentUserEmail={activeUserEmail}
                       onAssignAssets={this._onAssignAssets}
                       isActionInProgress={!!this.state.isTrackingActionInProgress}
                     />
@@ -1652,6 +1761,67 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     <p style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
                       Admin-only configuration area for list schema, process settings, and environment setup.
                     </p>
+
+                    {/* Sync & Diagnostics Operations Section */}
+                    <div style={{ backgroundColor: 'var(--surface-color, #ffffff)', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
+                      <h4 style={{ marginBottom: '10px', color: '#111827', marginTop: 0 }}>Mapping List Management & Sync</h4>
+                      <p style={{ fontSize: '0.88rem', color: '#4b5563', margin: '0 0 15px 0' }}>
+                        Ensure all assets currently assigned to active employees are properly mapped to the SharePoint <strong>Mapping List</strong>.
+                        Use the buttons below to perform a manual synchronization check or diagnose the list&apos;s database schema.
+                      </p>
+
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                        <PrimaryButton
+                          text={this.state.syncInProgress ? "Processing..." : "Sync Assigned Assets"}
+                          iconProps={{ iconName: 'Sync' }}
+                          onClick={this._onSyncAssignedAssets}
+                          disabled={this.state.syncInProgress}
+                        />
+                        <PrimaryButton
+                          text={this.state.syncInProgress ? "Checking Schema..." : "Run Schema Diagnostics"}
+                          iconProps={{ iconName: 'Database' }}
+                          onClick={this._onRunDiagnostics}
+                          disabled={this.state.syncInProgress}
+                          styles={{
+                            root: { backgroundColor: '#5c2d91', borderColor: '#5c2d91' },
+                            rootHovered: { backgroundColor: '#4b2278', borderColor: '#4b2278' }
+                          }}
+                        />
+                      </div>
+
+                      {this.state.syncMessage && (
+                        <MessageBar
+                          messageBarType={this.state.syncMessageType}
+                          onDismiss={() => this.setState({ syncMessage: undefined })}
+                          styles={{ root: { marginBottom: '15px', borderRadius: '6px' } }}
+                        >
+                          {this.state.syncMessage}
+                        </MessageBar>
+                      )}
+
+                      {this.state.diagnosticInfo && (
+                        <div style={{ marginTop: '15px' }}>
+                          <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', color: '#323130', marginBottom: '6px' }}>Diagnostic Log Output:</span>
+                          <textarea
+                            readOnly
+                            value={this.state.diagnosticInfo}
+                            rows={10}
+                            style={{
+                              width: '100%',
+                              fontFamily: 'monospace',
+                              fontSize: '0.82rem',
+                              padding: '10px',
+                              backgroundColor: '#f3f2f1',
+                              border: '1px solid #e1dfdd',
+                              borderRadius: '4px',
+                              resize: 'vertical',
+                              color: '#323130'
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                       <div style={{ backgroundColor: 'var(--surface-color, #ffffff)', padding: '20px', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                         <h4 style={{ marginBottom: '15px', color: '#111827', marginTop: 0 }}>SharePoint List Connections</h4>
@@ -1732,7 +1902,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
             availableAssets={items}
             employees={EMPLOYEES}
             currentUserRole={effectiveRole}
-            currentUserName={userDisplayName}
+            currentUserName={activeUserDisplayName}
             onSubmitRequest={this._onSubmitRequest}
           />
         )}

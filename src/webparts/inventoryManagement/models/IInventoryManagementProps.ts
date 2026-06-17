@@ -1,3 +1,5 @@
+import { WebPartContext } from '@microsoft/sp-webpart-base';
+
 export interface IInventoryManagementProps {
   description: string;
   isDarkTheme: boolean;
@@ -5,4 +7,5 @@ export interface IInventoryManagementProps {
   hasTeamsContext: boolean;
   userDisplayName: string;
   userEmail: string;
+  spContext: WebPartContext;
 }
