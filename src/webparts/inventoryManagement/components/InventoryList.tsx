@@ -8,14 +8,18 @@ import {
   IGroup
 } from '@fluentui/react/lib/DetailsList';
 import { PrimaryButton } from '@fluentui/react/lib/Button';
+import styles from './InventoryManagement.module.scss';
 
 export interface IInventoryListProps {
   items: IInventoryItem[];
   isAdmin?: boolean;
   onReturnAsset?: (item: IInventoryItem) => void;
+  enablePagination?: boolean;
+  pageSize?: number;
 }
 
 export const InventoryList: React.FC<IInventoryListProps> = (props) => {
+  const [currentPage, setCurrentPage] = React.useState<number>(1);
   const columns: IColumn[] = [
     { key: 'column1', name: 'ID', fieldName: 'id', minWidth: 40, maxWidth: 40, isResizable: true },
     { key: 'column2', name: 'Title', fieldName: 'title', minWidth: 100, maxWidth: 150, isResizable: true },
@@ -141,30 +145,45 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
         }
       }
     ] : [])
-  ];
+  ];  // Reset page when items array changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [props.items]);
 
-  // Grouping Logic for Admins
-  let items = props.items;
-  let groups: IGroup[] | undefined = undefined;
+  const normalizeGroupTitle = (title: string | undefined): string => {
+    const t = (title || 'Uncategorized').trim();
+    if (/^company\s*assets?$/i.test(t)) return 'Company Assets';
+    if (/^leased\s*assets?$/i.test(t)) return 'Leased Assets';
+    return t;
+  };
 
-  if (props.isAdmin && items.length > 0) {
-    const normalizeGroupTitle = (title: string | undefined): string => {
-      const t = (title || 'Uncategorized').trim();
-      if (/^company\s*assets?$/i.test(t)) return 'Company Assets';
-      if (/^leased\s*assets?$/i.test(t)) return 'Leased Assets';
-      return t;
-    };
-
-    // Sort items by normalized title to ensure correct grouping
-    items = [...props.items].sort((a, b) => 
+  // 1. Process items (sorting by group title if admin)
+  let itemsToProcess = props.items;
+  if (props.isAdmin && itemsToProcess.length > 0) {
+    itemsToProcess = [...props.items].sort((a, b) => 
       normalizeGroupTitle(a.title).localeCompare(normalizeGroupTitle(b.title))
     );
-    
+  }
+
+  // 2. Paginate if enabled
+  const pageSize = props.pageSize || 10;
+  const totalItems = itemsToProcess.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const activePage = Math.min(currentPage, Math.max(1, totalPages));
+  const startIndex = props.enablePagination ? (activePage - 1) * pageSize : 0;
+  
+  const itemsToRender = props.enablePagination 
+    ? itemsToProcess.slice(startIndex, startIndex + pageSize)
+    : itemsToProcess;
+
+  // 3. Compute groups based on the actual items to render
+  let groups: IGroup[] | undefined = undefined;
+  if (props.isAdmin && itemsToRender.length > 0) {
     groups = [];
-    let currentGroupName = normalizeGroupTitle(items[0].title);
+    let currentGroupName = normalizeGroupTitle(itemsToRender[0].title);
     let currentGroupStartIndex = 0;
 
-    items.forEach((item, index) => {
+    itemsToRender.forEach((item, index) => {
       const itemGroup = normalizeGroupTitle(item.title);
       if (itemGroup !== currentGroupName) {
         groups!.push({
@@ -179,28 +198,116 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
       }
     });
 
-    // Add the last group
-    if (items.length > 0) {
+    if (itemsToRender.length > 0) {
       groups!.push({
         key: currentGroupName,
         name: currentGroupName,
         startIndex: currentGroupStartIndex,
-        count: items.length - currentGroupStartIndex,
+        count: itemsToRender.length - currentGroupStartIndex,
         isCollapsed: false,
       });
     }
   }
 
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      
+      const start = Math.max(2, activePage - 1);
+      const end = Math.min(totalPages - 1, activePage + 1);
+      
+      if (start > 2) {
+        pages.push('...');
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      if (end < totalPages - 1) {
+        pages.push('...');
+      }
+      
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   return (
     <div style={{ marginTop: '10px' }}>
       <DetailsList
-        items={items}
+        items={itemsToRender}
         columns={columns}
         groups={groups}
         setKey="set"
         layoutMode={DetailsListLayoutMode.justified}
         selectionMode={SelectionMode.none}
       />
+
+      {props.enablePagination && totalPages > 1 && (
+        <div className={styles.paginationContainer}>
+          <div className={styles.paginationInfo}>
+            Showing <strong>{startIndex + 1}</strong> to <strong>{Math.min(startIndex + pageSize, totalItems)}</strong> of <strong>{totalItems}</strong> entries
+          </div>
+          <div className={styles.paginationControls}>
+            <button
+              className={styles.paginationButton}
+              disabled={activePage === 1}
+              onClick={() => setCurrentPage(1)}
+              title="First Page"
+            >
+              &laquo;
+            </button>
+            <button
+              className={styles.paginationButton}
+              disabled={activePage === 1}
+              onClick={() => setCurrentPage(prev => prev - 1)}
+              title="Previous Page"
+            >
+              &lsaquo;
+            </button>
+
+            {getPageNumbers().map((page, idx) => {
+              if (page === '...') {
+                return <span key={`ellipsis-${idx}`} style={{ padding: '0 8px', color: 'var(--text-muted)' }}>...</span>;
+              }
+              return (
+                <button
+                  key={page}
+                  className={`${styles.paginationButton} ${activePage === page ? styles.active : ''}`}
+                  onClick={() => setCurrentPage(page as number)}
+                >
+                  {page}
+                </button>
+              );
+            })}
+
+            <button
+              className={styles.paginationButton}
+              disabled={activePage === totalPages}
+              onClick={() => setCurrentPage(prev => prev + 1)}
+              title="Next Page"
+            >
+              &rsaquo;
+            </button>
+            <button
+              className={styles.paginationButton}
+              disabled={activePage === totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              title="Last Page"
+            >
+              &raquo;
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

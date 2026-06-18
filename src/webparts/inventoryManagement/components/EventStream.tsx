@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { IEventLog } from '../models/IEventLog';
 import {
   DetailsList,
@@ -10,6 +10,7 @@ import {
 import { MessageBar, MessageBarType } from '@fluentui/react/lib/MessageBar';
 import { SearchBox } from '@fluentui/react/lib/SearchBox';
 import { RoleUtils, UserRole } from '../utils/RoleUtils';
+import styles from './InventoryManagement.module.scss';
 
 export interface IEventStreamProps {
   logs: IEventLog[];
@@ -21,6 +22,8 @@ export interface IEventStreamProps {
 
 export const EventStream: React.FC<IEventStreamProps> = (props) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 10;
 
   const isAdmin = props.currentUserRole === 'Admin';
   const isManager = props.currentUserRole === 'Inventory Manager';
@@ -157,6 +160,48 @@ export const EventStream: React.FC<IEventStreamProps> = (props) => {
     );
   }, [roleBasedFilteredLogs, searchQuery]);
 
+  // Reset page when searchQuery or logs array changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, props.logs]);
+
+  const totalItems = filteredLogs.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const activePage = Math.min(currentPage, Math.max(1, totalPages));
+  const startIndex = (activePage - 1) * pageSize;
+  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + pageSize);
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1);
+      
+      const start = Math.max(2, activePage - 1);
+      const end = Math.min(totalPages - 1, activePage + 1);
+      
+      if (start > 2) {
+        pages.push('...');
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      if (end < totalPages - 1) {
+        pages.push('...');
+      }
+      
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   return (
     <div style={{ marginTop: '20px' }}>
       <div style={{ marginBottom: '20px' }}>
@@ -182,13 +227,73 @@ export const EventStream: React.FC<IEventStreamProps> = (props) => {
       ) : filteredLogs.length === 0 ? (
         <p style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No audit events match your search query.</p>
       ) : (
-        <DetailsList
-          items={filteredLogs}
-          columns={columns}
-          setKey="set"
-          layoutMode={DetailsListLayoutMode.justified}
-          selectionMode={SelectionMode.none}
-        />
+        <>
+          <DetailsList
+            items={paginatedLogs}
+            columns={columns}
+            setKey="set"
+            layoutMode={DetailsListLayoutMode.justified}
+            selectionMode={SelectionMode.none}
+          />
+
+          {totalPages > 1 && (
+            <div className={styles.paginationContainer}>
+              <div className={styles.paginationInfo}>
+                Showing <strong>{startIndex + 1}</strong> to <strong>{Math.min(startIndex + pageSize, totalItems)}</strong> of <strong>{totalItems}</strong> entries
+              </div>
+              <div className={styles.paginationControls}>
+                <button
+                  className={styles.paginationButton}
+                  disabled={activePage === 1}
+                  onClick={() => setCurrentPage(1)}
+                  title="First Page"
+                >
+                  &laquo;
+                </button>
+                <button
+                  className={styles.paginationButton}
+                  disabled={activePage === 1}
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                  title="Previous Page"
+                >
+                  &lsaquo;
+                </button>
+
+                {getPageNumbers().map((page, idx) => {
+                  if (page === '...') {
+                    return <span key={`ellipsis-${idx}`} style={{ padding: '0 8px', color: 'var(--text-muted)' }}>...</span>;
+                  }
+                  return (
+                    <button
+                      key={page}
+                      className={`${styles.paginationButton} ${activePage === page ? styles.active : ''}`}
+                      onClick={() => setCurrentPage(page as number)}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+
+                <button
+                  className={styles.paginationButton}
+                  disabled={activePage === totalPages}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  title="Next Page"
+                >
+                  &rsaquo;
+                </button>
+                <button
+                  className={styles.paginationButton}
+                  disabled={activePage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  title="Last Page"
+                >
+                  &raquo;
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

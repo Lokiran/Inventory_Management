@@ -1331,7 +1331,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     {this.state.loading ? (
                       <p>Loading inventory...</p>
                     ) : (
-                      <InventoryList items={items} isAdmin={true} />
+                      <InventoryList items={items} isAdmin={true} enablePagination={true} />
                     )}
                   </div>
                 </PivotItem>
