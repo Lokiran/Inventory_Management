@@ -38,6 +38,7 @@ import "@pnp/sp/site-users/web";
 import "@pnp/sp/site-groups/web";
 
 import { EMPLOYEES } from '../data/mockData';
+import { IEmployee } from '../models/IEmployee';
 import { InventoryService } from '../services/InventoryService';
 import { Dashboard } from './Dashboard';
 import { AssetTracking } from './AssetTracking';
@@ -45,9 +46,11 @@ import { INotification } from '../models/INotification';
 import { NotificationCenter } from './NotificationCenter';
 import { IncidentRequestModule } from './IncidentRequest/IncidentRequestModule';
 import { IncidentHistory } from './IncidentHistory/IncidentHistory';
+import { AssetLifecycleDiagram } from './AssetLifecycleDiagram';
 
 export interface IInventoryManagementState {
   items: IInventoryItem[];
+  employees: IEmployee[];
   requests: IRequest[];
   auditLogs: IEventLog[];
   userRole: 'Admin' | 'Inventory Manager' | 'Inventory Employee';
@@ -74,6 +77,7 @@ export interface IInventoryManagementState {
   isReturnFormOpen: boolean;
   activeUserDisplayName: string;
   activeUserEmail: string;
+  isIncidentFormOpen: boolean;
   syncInProgress?: boolean;
   syncMessage?: string;
   syncMessageType?: MessageBarType;
@@ -366,6 +370,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
     this.state = {
       items: [],
+      employees: EMPLOYEES,
       requests: [],
       auditLogs: [],
       userRole: 'Inventory Employee',
@@ -389,7 +394,8 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       selectedAssetForReturn: undefined,
       isReturnFormOpen: false,
       activeUserDisplayName: activeName,
-      activeUserEmail: activeEmail
+      activeUserEmail: activeEmail,
+      isIncidentFormOpen: false
     };
   }
 
@@ -410,46 +416,13 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
   private _resolveUserRole = async (): Promise<void> => {
     try {
-      const normalizedDisplayName = (this.state.activeUserDisplayName || this.props.userDisplayName || '').toLowerCase().trim();
-      const compactDisplayName = normalizedDisplayName.replace(/\s+/g, '');
-      const normalizedEmail = (this.state.activeUserEmail || this.props.userEmail || '').toLowerCase().trim();
-
-      const forcedRoleByUserKey: Record<string, 'Admin' | 'Inventory Manager' | 'Inventory Employee'> = {
-        'kiran.reddy@3bh3kf.onmicrosoft.com': 'Admin',
-        'adelev@3bh3kf.onmicrosoft.com': 'Inventory Employee',
-        'alexw@3bh3kf.onmicrosoft.com': 'Inventory Employee',
-        'diegos@3bh3kf.onmicrosoft.com': 'Inventory Manager',
-        'gradya@3bh3kf.onmicrosoft.com': 'Inventory Manager'
-      };
-
-      let forcedRole: 'Admin' | 'Inventory Manager' | 'Inventory Employee' | undefined;
-      for (const userKey in forcedRoleByUserKey) {
-        if (
-          compactDisplayName.includes(userKey) ||
-          normalizedDisplayName.includes(userKey) ||
-          normalizedEmail.includes(userKey)
-        ) {
-          forcedRole = forcedRoleByUserKey[userKey];
-          break;
-        }
-      }
-
-      if (forcedRole) {
-        this.setState({
-          userRole: forcedRole,
-          roleGroups: [],
-          roleLoading: false
-        });
-        return;
-      }
-
       const sp = getSP();
       const groups = await sp.web.currentUser.groups();
-      const groupNames = groups.map((group: any) => (group.Title || '').toLowerCase());
+      const groupNames = groups.map((group: any) => (group.Title || '').toLowerCase().trim());
 
-      const isAdmin = groupNames.some((name: string) => name.includes('admin'));
-      const isInventoryManager = groupNames.some((name: string) => name.includes('inventory manager'));
-      const isInventoryEmployee = groupNames.some((name: string) => name.includes('inventory employee'));
+      const isAdmin = groupNames.some((name: string) => name === 'msft owners' || name.indexOf('msft owners') >= 0);
+      const isInventoryManager = groupNames.some((name: string) => name === 'msft members' || name.indexOf('msft members') >= 0);
+      const isInventoryEmployee = groupNames.some((name: string) => name === 'msft visitors' || name.indexOf('msft visitors') >= 0);
 
       let userRole: 'Admin' | 'Inventory Manager' | 'Inventory Employee' = 'Inventory Employee';
 
@@ -461,9 +434,53 @@ export default class InventoryManagement extends React.Component<IInventoryManag
         userRole = 'Inventory Employee';
       }
 
+      // Load employees from groups dynamically
+      const loadedEmployees: IEmployee[] = [];
+      const seenEmails = new Set<string>();
+
+      const addUsers = (users: any[], jobTitle: 'Admin' | 'Inventory Manager' | 'Inventory Employee', department: string) => {
+        users.forEach(u => {
+          const email = (u.Email || u.LoginName || '').toLowerCase().trim();
+          if (email && !seenEmails.has(email)) {
+            seenEmails.add(email);
+            loadedEmployees.push({
+              id: u.Id ? u.Id.toString() : u.Email || Math.random().toString(),
+              name: u.Title || 'Unknown User',
+              email: u.Email || '',
+              department: department,
+              jobTitle: jobTitle
+            });
+          }
+        });
+      };
+
+      try {
+        const owners = await sp.web.siteGroups.getByName("MSFT Owners").users();
+        addUsers(owners, 'Admin', 'Management');
+      } catch (e) {
+        console.warn("Could not load users from group 'MSFT Owners':", e);
+      }
+
+      try {
+        const members = await sp.web.siteGroups.getByName("MSFT Members").users();
+        addUsers(members, 'Inventory Manager', 'Operations');
+      } catch (e) {
+        console.warn("Could not load users from group 'MSFT Members':", e);
+      }
+
+      try {
+        const visitors = await sp.web.siteGroups.getByName("MSFT Visitors").users();
+        addUsers(visitors, 'Inventory Employee', 'Operations');
+      } catch (e) {
+        console.warn("Could not load users from group 'MSFT Visitors':", e);
+      }
+
+      const finalEmployees = loadedEmployees.length > 0 ? loadedEmployees : EMPLOYEES;
+
       this.setState({
         userRole,
         roleGroups: groups.map((group: any) => group.Title || ''),
+        employees: finalEmployees,
         roleLoading: false
       });
     } catch (error) {
@@ -471,6 +488,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
       this.setState({
         userRole: 'Inventory Employee',
         roleGroups: [],
+        employees: EMPLOYEES,
         roleLoading: false
       });
     }
@@ -612,7 +630,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
 
   private _onSubmitRequest = async (requestData: Omit<IRequest, 'id' | 'requestKey' | 'status'>): Promise<void> => {
     try {
-      const requesterEmployee = EMPLOYEES.find(e => e.name.toLowerCase() === requestData.requesterName.toLowerCase());
+      const requesterEmployee = this.state.employees.find(e => e.name.toLowerCase() === requestData.requesterName.toLowerCase());
       const requesterRole = requesterEmployee ? requesterEmployee.jobTitle : 'Inventory Employee';
       const initialStatus = requesterRole === 'Inventory Manager' ? 'Approved' : 'Pending';
 
@@ -725,7 +743,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
   private _onAssignAssets = async (employeeName: string, employeeEmail: string, assetIds: string[]): Promise<void> => {
     try {
       this.setState({ isTrackingActionInProgress: true, errorMessage: undefined });
-      const employee = EMPLOYEES.find(e => e.name.toLowerCase() === employeeName.toLowerCase());
+      const employee = this.state.employees.find(e => e.name.toLowerCase() === employeeName.toLowerCase());
       const employeeId = employee ? employee.id : "";
       await InventoryService.assignAssetsToEmployee(assetIds, employeeName, employeeEmail, this.state.activeUserDisplayName, employeeId);
       await this._loadInventory();
@@ -1173,11 +1191,9 @@ export default class InventoryManagement extends React.Component<IInventoryManag
               )}
 
             </div>
-            <img
-              alt="Welcome"
-              src={isDarkTheme ? require('../assets/welcome-dark.png') : require('../assets/welcome-light.png')}
-              className={styles.welcomeImage}
-            />
+            <div className={styles.welcomeDiagramContainer}>
+              <AssetLifecycleDiagram isDarkTheme={isDarkTheme} />
+            </div>
           </div>
 
           {this.state.errorMessage && (
@@ -1217,7 +1233,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                 <div className={styles.actionButtonContainer}>
                   <PrimaryButton
                     text="Raise Incident"
-                    onClick={() => this.setState({ selectedTabKey: 'RaiseIncident' })}
+                    onClick={() => this.setState({ isIncidentFormOpen: true })}
                     iconProps={{ iconName: 'AlertSolid' }}
                   />
                 </div>
@@ -1289,22 +1305,14 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                   onNotificationAction={this._handleNotificationAction}
                 />
               </PivotItem>
-              <PivotItem headerText="Raise Incident" itemIcon="AlertSolid" itemKey="RaiseIncident">
-                <div style={{ marginTop: '20px' }}>
-                  <IncidentRequestModule
-                    {...this.props}
-                    userDisplayName={activeUserDisplayName}
-                    userEmail={activeUserEmail}
-                    setIsLoading={(loading) => this.setState({ loading })}
-                  />
-                </div>
-              </PivotItem>
+
               <PivotItem headerText="Incident History" itemIcon="History" itemKey="IncidentHistory">
                 <div style={{ marginTop: '20px' }}>
                   <IncidentHistory
                     {...this.props}
                     userDisplayName={activeUserDisplayName}
                     userEmail={activeUserEmail}
+                    userRole={effectiveRole}
                     setIsLoading={(loading) => this.setState({ loading })}
                   />
                 </div>
@@ -1508,7 +1516,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     <h4 style={{ marginBottom: '15px' }}>Employee Directory & Asset Ownership</h4>
                     <div style={{ backgroundColor: 'var(--surface-color, #ffffff)', padding: '15px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                       <DetailsList
-                        items={EMPLOYEES.map(emp => {
+                        items={this.state.employees.map(emp => {
                           const realName = emp.jobTitle === 'Admin' ? (activeUserDisplayName || emp.name) : emp.name;
                           const assignedItems = items.filter(i => this._isAssetAssignedToCurrentUser(i, realName));
                           const assetTypes = Array.from(new Set(assignedItems.map(a => a.assetType))).filter(t => t).join(', ');
@@ -1589,7 +1597,7 @@ export default class InventoryManagement extends React.Component<IInventoryManag
                     </p>
                     <AssetTracking
                       items={items}
-                      employees={EMPLOYEES}
+                      employees={this.state.employees}
                       currentUserRole={effectiveRole}
                       currentUserName={activeUserDisplayName}
                       currentUserEmail={activeUserEmail}
@@ -1900,10 +1908,21 @@ export default class InventoryManagement extends React.Component<IInventoryManag
             isOpen={isRequestFormOpen}
             onClose={() => this.setState({ isRequestFormOpen: false })}
             availableAssets={items}
-            employees={EMPLOYEES}
+            employees={this.state.employees}
             currentUserRole={effectiveRole}
             currentUserName={activeUserDisplayName}
             onSubmitRequest={this._onSubmitRequest}
+          />
+        )}
+
+        {(isAdmin || isManager || isEmployee) && (
+          <IncidentRequestModule
+            {...this.props}
+            isOpen={this.state.isIncidentFormOpen}
+            onClose={() => this.setState({ isIncidentFormOpen: false })}
+            userDisplayName={activeUserDisplayName}
+            userEmail={activeUserEmail}
+            setIsLoading={(loading) => this.setState({ loading })}
           />
         )}
 

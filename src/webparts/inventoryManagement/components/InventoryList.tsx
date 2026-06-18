@@ -67,6 +67,43 @@ export const InventoryList: React.FC<IInventoryListProps> = (props) => {
         );
       }
     },
+    {
+      key: 'columnActivation',
+      name: 'Activation State',
+      minWidth: 100,
+      maxWidth: 120,
+      isResizable: true,
+      onRender: (item: IInventoryItem) => {
+        const statusVal = (item.status || '').toLowerCase();
+        let activationState = 'Deactivated';
+        let badgeColor = '#991b1b'; // Red
+        let bgColor = '#fee2e2';
+
+        if (statusVal === 'assigned') {
+          activationState = 'Activated';
+          badgeColor = '#166534'; // Green
+          bgColor = '#dcfce7';
+        } else if (statusVal === 'in stock' || statusVal === 'yes') {
+          activationState = 'Inactivated';
+          badgeColor = '#92400e'; // Dark orange/amber
+          bgColor = '#fef3c7'; // Amber 100
+        }
+
+        return (
+          <span style={{ 
+            backgroundColor: bgColor, 
+            color: badgeColor, 
+            padding: '4px 12px', 
+            borderRadius: '9999px', 
+            fontSize: '0.75rem', 
+            fontWeight: 600,
+            display: 'inline-block'
+          }}>
+            {activationState}
+          </span>
+        );
+      }
+    },
     { key: 'column8', name: 'Assigned To', fieldName: 'assignedTo', minWidth: 100, maxWidth: 150, isResizable: true },
     { key: 'column9', name: 'Specifications', fieldName: 'specifications', minWidth: 150, maxWidth: 300, isResizable: true },
     ...(props.onReturnAsset ? [

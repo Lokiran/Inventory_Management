@@ -651,11 +651,17 @@ export class InventoryService {
           : 'Unknown';
 
       await this.addAuditLog({
-        title: `Created Asset: ${item.title}`,
-        action: 'Create',
+        title: `Created Asset: ${item.assetName || item.title} (Inactivated)`,
+        action: 'Inactivated',
         entityType: 'Asset',
         entityId,
-        details: JSON.stringify(item),
+        details: JSON.stringify({
+          lifecycle: "Registration",
+          status: "In Stock",
+          changedBy: userDisplayName,
+          changedAt: new Date().toISOString(),
+          item
+        }),
         user: userDisplayName
       });
     } catch (auditError) {
@@ -1677,8 +1683,8 @@ export class InventoryService {
       }
 
       await this.addAuditLog({
-        title: `Asset directly assigned to ${employeeName}`,
-        action: 'Update',
+        title: `Asset activated and assigned to ${employeeName}`,
+        action: 'Activated',
         entityType: 'Asset',
         entityId: assetId,
         details: JSON.stringify({
@@ -2430,8 +2436,8 @@ export class InventoryService {
 
     try {
       await this.addAuditLog({
-        title: `Requested Return: ${request.assetName}`,
-        action: 'Update',
+        title: `Requested Return & Deactivated: ${request.assetName}`,
+        action: 'Deactivated',
         entityType: 'Asset',
         entityId: request.assetId,
         details: JSON.stringify({
@@ -2582,9 +2588,32 @@ export class InventoryService {
         lifecycle = "ReturnCompleted";
       }
 
+      let finalAction = 'Update';
+      let finalTitle = logTitle;
+      if (status === 'Approved') {
+        finalAction = 'Deactivated';
+        finalTitle = `Approved Return Request & Deactivated: ${req.assetName}`;
+      } else if (status === 'Rejected') {
+        finalAction = 'Activated';
+        finalTitle = `Rejected Return Request & Reactivated: ${req.assetName}`;
+      } else if (status === 'Completed') {
+        const condition = finalCondition || req.proposedCondition || "Good";
+        let nextStatus = "In Stock";
+        if (condition === "Poor" || condition === "Damaged") {
+          nextStatus = "Under Maintenance";
+        }
+        if (nextStatus === 'In Stock') {
+          finalAction = 'Inactivated';
+          finalTitle = `Completed Return & Inactivated: ${req.assetName} (Returned to Stock)`;
+        } else {
+          finalAction = 'Deactivated';
+          finalTitle = `Completed Return & Deactivated: ${req.assetName} (Under Maintenance)`;
+        }
+      }
+
       await this.addAuditLog({
-        title: logTitle,
-        action: 'Update',
+        title: finalTitle,
+        action: finalAction,
         entityType: 'Asset',
         entityId: req.assetId,
         details: JSON.stringify({

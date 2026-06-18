@@ -5,6 +5,8 @@ import '@pnp/sp/lists';
 import '@pnp/sp/items';
 import '@pnp/sp/fields';
 import { LogLevel, PnPLogging } from '@pnp/logging';
+import { EMPLOYEES } from '../data/mockData';
+import { InventoryService } from './InventoryService';
 
 export class IncidentService {
   private sp: SPFI;
@@ -23,7 +25,7 @@ export class IncidentService {
   private async getMappedPayload(listName: string, data: any): Promise<any> {
     try {
       const fields = await this.sp.web.lists.getByTitle(listName).fields();
-      
+
       const getInternalName = (displayNames: string[]) => {
         for (const name of displayNames) {
           const field = fields.find(f => f.Title && f.Title.toLowerCase() === name.toLowerCase());
@@ -33,7 +35,7 @@ export class IncidentService {
       };
 
       const payload: any = {};
-      
+
       // The first column (usually Title) was renamed to Employe/Employee
       payload.Title = data.employeeName || 'Unknown';
 
@@ -41,7 +43,7 @@ export class IncidentService {
       if (empNameField) {
         payload[empNameField] = data.employeeName || 'Unknown';
       }
-      
+
       const empIdField = getInternalName(['Employe ID', 'Employee ID', 'EmployeeId', 'EmployeID']);
       if (empIdField) payload[empIdField] = data.employeeId || 'N/A';
 
@@ -97,19 +99,19 @@ export class IncidentService {
 
   private filterByUser(items: any[], userEmail: string): any[] {
     if (!items || !userEmail) return [];
-    
+
     const emailPrefix = userEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
     const userEmailClean = userEmail.toLowerCase().trim();
-    
+
     return items.filter(item => {
       const empNameClean = (item.employeeName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const empIdClean = (item.employeeId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
       const empEmailClean = (item.employeeEmail || item.email || '').toLowerCase().trim();
       const empIdRaw = (item.employeeId || '').toLowerCase().trim();
-      
+
       return empNameClean.includes(emailPrefix) || emailPrefix.includes(empNameClean) ||
-             empIdClean.includes(emailPrefix) || emailPrefix.includes(empIdClean) ||
-             empEmailClean === userEmailClean || empIdRaw === userEmailClean;
+        empIdClean.includes(emailPrefix) || emailPrefix.includes(empIdClean) ||
+        empEmailClean === userEmailClean || empIdRaw === userEmailClean;
     });
   }
 
@@ -188,24 +190,24 @@ export class IncidentService {
     }));
   }
 
-  public async getEmployeeIncidentHistory(userEmail: string): Promise<any[]> {
+  public async getEmployeeIncidentHistory(userEmail: string, isAdmin?: boolean): Promise<any[]> {
     try {
-      console.log(`[SharePoint IncidentList Read] Fetching incident history for: ${userEmail}`);
+      console.log(`[SharePoint IncidentList Read] Fetching incident history for: ${userEmail}, isAdmin: ${isAdmin}`);
       const fields = await this.sp.web.lists.getByTitle(this.incidentListName).fields();
       const items = await this.sp.web.lists.getByTitle(this.incidentListName).items();
-      
+
       const mappedItems = await this.getMappedItems(fields, items);
-      
-      const filtered = this.filterByUser(mappedItems, userEmail);
+
+      const filtered = isAdmin ? mappedItems : this.filterByUser(mappedItems, userEmail);
 
       const localIncidents = this.getLocalItems('spfx_mock_incidents');
-      const filteredLocal = this.filterByUser(localIncidents, userEmail);
+      const filteredLocal = isAdmin ? localIncidents : this.filterByUser(localIncidents, userEmail);
 
       console.log(`[SharePoint IncidentList Read] Found ${filtered.length + filteredLocal.length} incidents`);
       return [...filtered, ...filteredLocal];
     } catch (error: any) {
       console.warn('Failed to fetch incident history from SharePoint, returning localStorage fallback:', error.message);
-      
+
       let localIncidents = this.getLocalItems('spfx_mock_incidents');
       if (localIncidents.length === 0) {
         localIncidents = [
@@ -229,48 +231,195 @@ export class IncidentService {
         ];
         this.saveLocalItems('spfx_mock_incidents', localIncidents);
       }
+
+      return isAdmin ? localIncidents : this.filterByUser(localIncidents, userEmail);
+    }
+  }
+
+  public async updateIncidentStatus(id: string, status: string, resolution?: string): Promise<any> {
+    try {
+      console.log(`[IncidentService] Updating status of incident ${id} to: ${status}`);
       
-      return this.filterByUser(localIncidents, userEmail);
+      const isLocal = id.startsWith('INC-') || isNaN(Number(id));
+      
+      if (isLocal) {
+        const localIncidents = this.getLocalItems('spfx_mock_incidents');
+        const updated = localIncidents.map(inc => {
+          if (inc.id === id || inc.incidentId === id) {
+            return {
+              ...inc,
+              status,
+              resolution: resolution || inc.resolution,
+              resolvedDate: status === 'Resolved' || status === 'Closed' ? new Date().toISOString() : inc.resolvedDate
+            };
+          }
+          return inc;
+        });
+        this.saveLocalItems('spfx_mock_incidents', updated);
+        return { success: true };
+      } else {
+        const list = this.sp.web.lists.getByTitle(this.incidentListName);
+        const fields = await list.fields();
+        
+        const getFieldName = (displayNames: string[]) => {
+          for (const name of displayNames) {
+            const field = fields.find(f => f.Title && f.Title.toLowerCase() === name.toLowerCase());
+            if (field) return field.InternalName;
+          }
+          return null;
+        };
+
+        const statusField = getFieldName(['Status', 'Request Status', 'RequestStatus']);
+        const resolutionField = getFieldName(['Resolution', 'Resolution Summary', 'ResolutionDetails', 'ResolutionDescription']);
+        const resolvedDateField = getFieldName(['Resolved Date', 'ResolvedDate', 'Resolution Date', 'ResolutionDate']);
+        
+        const payload: any = {};
+        if (statusField) {
+          payload[statusField] = status;
+        } else {
+          payload.Status = status;
+        }
+
+        if (resolution && resolutionField) {
+          payload[resolutionField] = resolution;
+        }
+
+        if ((status === 'Resolved' || status === 'Closed') && resolvedDateField) {
+          payload[resolvedDateField] = new Date().toISOString();
+        }
+
+        const numericId = parseInt(id, 10);
+        const result = await list.items.getById(numericId).update(payload);
+        console.log('[IncidentService] SharePoint update completed successfully:', result);
+        return result;
+      }
+    } catch (error: any) {
+      console.warn('[IncidentService] Failed to update SharePoint list item status, using localStorage fallback:', error.message);
+      
+      const localIncidents = this.getLocalItems('spfx_mock_incidents');
+      const updated = localIncidents.map(inc => {
+        if (inc.id === id || inc.incidentId === id) {
+          return {
+            ...inc,
+            status,
+            resolution: resolution || inc.resolution,
+            resolvedDate: status === 'Resolved' || status === 'Closed' ? new Date().toISOString() : inc.resolvedDate
+          };
+        }
+        return inc;
+      });
+      this.saveLocalItems('spfx_mock_incidents', updated);
+      return { success: true };
     }
   }
 
   public async getEmployeeAssignedAssets(userEmail: string): Promise<any[]> {
     try {
-      console.log(`[SharePoint MappingList Read] Fetching assigned assets for: ${userEmail}`);
-      const fields = await this.sp.web.lists.getByTitle(this.mappingListName).fields();
-      const items = await this.sp.web.lists.getByTitle(this.mappingListName).items();
+      console.log(`[IncidentService] Fetching assigned assets for: ${userEmail}`);
       
-      const mapped = await this.getMappedAssignedAssets(fields, items);
+      // Resolve employee name from userEmail / EMPLOYEES
+      const userEmailClean = userEmail.toLowerCase().trim();
+      const employee = EMPLOYEES.find(emp => 
+        emp.email.toLowerCase() === userEmailClean || 
+        emp.name.toLowerCase() === userEmailClean ||
+        emp.id.toLowerCase() === userEmailClean
+      );
+      const employeeName = employee ? employee.name : userEmail;
       
-      const filtered = this.filterByUser(mapped, userEmail);
+      const assignedAssets: any[] = [];
+      const seenSerials = new Set<string>();
 
-      const localAssets = this.getLocalItems('spfx_mock_assets');
-      const filteredLocal = this.filterByUser(localAssets, userEmail);
+      // Helper to normalize strings for comparison
+      const normalize = (val: string | undefined) => (val || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const nameNorm = normalize(employeeName);
+      const emailNorm = normalize(employee ? employee.email : userEmail);
 
-      console.log(`[SharePoint MappingList Read] Found ${filtered.length + filteredLocal.length} assigned assets`);
-      return [...filtered, ...filteredLocal];
-    } catch (error: any) {
-      console.warn('Failed to fetch assigned assets from SharePoint, returning localStorage fallback:', error.message);
-      
-      let localAssets = this.getLocalItems('spfx_mock_assets');
-      if (localAssets.length === 0) {
-        localAssets = [
+      // 1. Attempt to fetch from InventoryList items (primary source of truth)
+      try {
+        const inventoryItems = await InventoryService.getItems();
+        if (inventoryItems && inventoryItems.length > 0) {
+          const matchedInventoryItems = inventoryItems.filter(item => {
+            const assignedNorm = normalize(item.assignedTo);
+            const isAssigned = assignedNorm && (assignedNorm === nameNorm || assignedNorm.includes(nameNorm) || nameNorm.includes(assignedNorm));
+            const isNoted = (item.note || '').toLowerCase().includes('assigned to:') && normalize(item.note).includes(nameNorm);
+            const isStatus = (item.status || '').toLowerCase().includes('assigned to:') && normalize(item.status).includes(nameNorm);
+            
+            const isEmailMatch = emailNorm && (
+              (assignedNorm && (assignedNorm === emailNorm || assignedNorm.includes(emailNorm) || emailNorm.includes(assignedNorm))) ||
+              ((item.note || '').toLowerCase().includes(emailNorm))
+            );
+
+            return isAssigned || isNoted || isStatus || isEmailMatch;
+          });
+
+          matchedInventoryItems.forEach(item => {
+            const serial = (item.serialNumber || '').trim();
+            if (serial) {
+              seenSerials.add(serial.toLowerCase());
+            }
+            assignedAssets.push({
+              id: item.id,
+              employeeName: employeeName,
+              employeeId: employee ? employee.id : '',
+              employeeEmail: employee ? employee.email : '',
+              assetType: item.assetType || 'Device',
+              assetName: item.assetName || item.title || 'Device',
+              serialNumber: item.serialNumber || '',
+              assignmentDate: item.assignedDate || new Date().toISOString(),
+              status: item.status || 'Assigned',
+              condition: item.condition || 'Good',
+              location: 'HQ Office'
+            });
+          });
+        }
+      } catch (err) {
+        console.warn('[IncidentService] Failed to fetch assets from InventoryList:', err);
+      }
+
+      // 2. Attempt to fetch from Mapping List (historical records / synced assignments)
+      try {
+        const mappingList = await InventoryService.getMappingList();
+        const fields = await mappingList.fields();
+        const items = await mappingList.items();
+        const mapped = await this.getMappedAssignedAssets(fields, items);
+        const filtered = this.filterByUser(mapped, employeeName || userEmail);
+
+        filtered.forEach(item => {
+          const serial = (item.serialNumber || '').trim();
+          if (serial && seenSerials.has(serial.toLowerCase())) {
+            return; // Skip duplicate
+          }
+          if (serial) {
+            seenSerials.add(serial.toLowerCase());
+          }
+          assignedAssets.push(item);
+        });
+      } catch (err) {
+        console.warn('[IncidentService] Failed to fetch assets from Mapping List:', err);
+      }
+
+      // 3. Fallback: return mock assets ONLY if user is a known mock employee and has no assignments
+      if (assignedAssets.length === 0 && employee) {
+        console.log('[IncidentService] No assignments found, generating fallback mock assets for known employee:', employee.name);
+        const mockAssets = [
           {
-            id: 'MAP-101',
-            employeeName: this.getEmployeeNameFromEmail(userEmail),
-            employeeId: userEmail,
+            id: `MOCK-MAP-${employee.id}-1`,
+            employeeName: employee.name,
+            employeeId: employee.id,
+            employeeEmail: employee.email,
             assetType: 'Laptop',
-            assetName: 'Dell Latitude 5420',
-            serialNumber: 'DL5420-9831',
+            assetName: employee.jobTitle === 'Admin' ? 'Dell XPS 15' : 'Dell Latitude 5420',
+            serialNumber: employee.jobTitle === 'Admin' ? 'DX15-9988' : 'DL5420-9831',
             assignmentDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
             status: 'Assigned',
             condition: 'Excellent',
             location: 'Remote Work'
           },
           {
-            id: 'MAP-102',
-            employeeName: this.getEmployeeNameFromEmail(userEmail),
-            employeeId: userEmail,
+            id: `MOCK-MAP-${employee.id}-2`,
+            employeeName: employee.name,
+            employeeId: employee.id,
+            employeeEmail: employee.email,
             assetType: 'Headset',
             assetName: 'Jabra Evolve 65',
             serialNumber: 'JB65-3819',
@@ -280,10 +429,14 @@ export class IncidentService {
             location: 'Remote Work'
           }
         ];
-        this.saveLocalItems('spfx_mock_assets', localAssets);
+        return mockAssets;
       }
-      
-      return this.filterByUser(localAssets, userEmail);
+
+      console.log(`[IncidentService] Found ${assignedAssets.length} assigned assets for user`);
+      return assignedAssets;
+    } catch (error: any) {
+      console.error('[IncidentService] getEmployeeAssignedAssets major error:', error);
+      return [];
     }
   }
 
@@ -331,24 +484,11 @@ export class IncidentService {
   }
 
   public async getEmployeeDetailsByName(employeeName: string): Promise<any> {
-    const mockEmployees = [
-      { employeeId: 'AdeleV@3bh3kf.onmicrosoft.com', employeeName: 'Adele Vance', department: 'Operations', email: 'AdeleV@3bh3kf.onmicrosoft.com' },
-      { employeeId: 'AlexW@3bh3kf.onmicrosoft.com', employeeName: 'Alex Wilber', department: 'Marketing', email: 'AlexW@3bh3kf.onmicrosoft.com' },
-      { employeeId: 'Akhila.Dodla@3bh3kf.onmicrosoft.com', employeeName: 'Akhila Dodla', department: 'Operations', email: 'Akhila.Dodla@3bh3kf.onmicrosoft.com' },
-      { employeeId: 'Swati.j@3bhkf.onmicrosoft.com', employeeName: 'Swati J', department: 'Information Technology', email: 'Swati.j@3bhkf.onmicrosoft.com' },
-      { employeeId: 'Swati.j@3bh3kf.onmicrosoft.com', employeeName: 'Swati J', department: 'Information Technology', email: 'Swati.j@3bh3kf.onmicrosoft.com' },
-      { employeeId: 'Kiran.Reddy@3bhkf.ommicrosoft.com', employeeName: 'Kiran Reddy', department: 'Operations', email: 'Kiran.Reddy@3bhkf.ommicrosoft.com' },
-      { employeeId: 'Kiran.Reddy@3bhkf.onmicrosoft.com', employeeName: 'Kiran Reddy', department: 'Operations', email: 'Kiran.Reddy@3bhkf.onmicrosoft.com' },
-      { employeeId: 'EMP001', employeeName: 'John Doe', department: 'Human Resources', email: 'john.doe@company.com' },
-      { employeeId: 'EMP002', employeeName: 'Jane Smith', department: 'Information Technology', email: 'jane.smith@company.com' },
-      { employeeId: 'EMP003', employeeName: 'Robert Johnson', department: 'Finance', email: 'robert.johnson@company.com' }
-    ];
-
     try {
       console.log(`[SharePoint EmployeeList Read] Looking up employee by name: ${employeeName}`);
       const fields = await this.sp.web.lists.getByTitle(this.employeeListName).fields();
       const items = await this.sp.web.lists.getByTitle(this.employeeListName).items();
-      
+
       const getInternalName = (displayNames: string[]) => {
         for (const name of displayNames) {
           const field = fields.find(f => f.Title && f.Title.toLowerCase() === name.toLowerCase());
@@ -381,12 +521,12 @@ export class IncidentService {
       console.warn('SharePoint name lookup failed, attempting mock fallback:', error.message);
     }
 
-    const mockUser = mockEmployees.find(emp => emp.employeeName.toLowerCase() === employeeName.trim().toLowerCase());
+    const mockUser = EMPLOYEES.find(emp => emp.name.toLowerCase() === employeeName.trim().toLowerCase());
     if (mockUser) {
       console.log('[Mock Fallback] Employee found by name:', mockUser);
       return {
-        employeeId: mockUser.employeeId,
-        employeeName: mockUser.employeeName,
+        employeeId: mockUser.id,
+        employeeName: mockUser.name,
         email: mockUser.email,
         department: mockUser.department
       };
@@ -404,22 +544,22 @@ export class IncidentService {
 
   private formatError(error: any): string {
     if (!error) return 'Unknown error';
-    
+
     if (error.statusCode === 404) {
       return `SharePoint list not found. Ensure lists exist with correct titles.`;
     }
-    
+
     if (error.statusCode === 403) {
       return `Access denied. Verify you have appropriate permissions.`;
     }
-    
+
     if (error.message && typeof error.message === 'string') {
       if (error.message.includes('Failed to fetch')) {
         return 'Failed to fetch. If you are testing locally, ensure you are using the Hosted Workbench and NOT localhost.';
       }
       return error.message;
     }
-    
+
     return JSON.stringify(error);
   }
 }

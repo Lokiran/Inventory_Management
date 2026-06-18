@@ -44,6 +44,15 @@
       box-shadow: var(--card-shadow);
       position: relative;
       overflow: hidden;
+      flex-wrap: wrap;
+      gap: 24px;
+
+      @media (max-width: 768px) {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 30px 20px;
+      }
 
       &::after {
         content: '';
@@ -59,6 +68,9 @@
 
       .heroText {
         z-index: 1;
+        flex: 1;
+        min-width: 250px;
+
         h2 {
           font-size: 2.2rem;
           margin: 0 0 8px 0;
@@ -76,13 +88,26 @@
           margin-top: 12px;
           display: block;
         }
+
+        @media (max-width: 768px) {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
       }
 
-      .welcomeImage {
-        width: 180px;
-        height: auto;
+      .welcomeDiagramContainer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         z-index: 1;
-        filter: drop-shadow(0 10px 15px rgba(0,0,0,0.2));
+        margin-left: 20px;
+        flex-shrink: 0;
+        
+        @media (max-width: 768px) {
+          margin-left: 0;
+          margin-top: 10px;
+        }
       }
     }
 

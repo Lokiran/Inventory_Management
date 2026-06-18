@@ -85,6 +85,18 @@ export const EventStream: React.FC<IEventStreamProps> = (props) => {
           backgroundColor = '#fee2e2'; // Light red
           textColor = '#991b1b';      // Dark red
           displayText = 'return rejected';
+        } else if (normalizedAction === 'activated') {
+          backgroundColor = '#dcfce7'; // Light green
+          textColor = '#166534';      // Dark green
+          displayText = 'activated';
+        } else if (normalizedAction === 'inactivated') {
+          backgroundColor = '#fef3c7'; // Light amber
+          textColor = '#92400e';      // Dark amber
+          displayText = 'inactivated';
+        } else if (normalizedAction === 'deactivated') {
+          backgroundColor = '#fee2e2'; // Light red
+          textColor = '#991b1b';      // Dark red
+          displayText = 'deactivated';
         } else if (normalizedAction === 'update') {
           backgroundColor = '#ffedd5'; // Light orange/yellow (fallback for generic Update)
           textColor = '#9a3412';

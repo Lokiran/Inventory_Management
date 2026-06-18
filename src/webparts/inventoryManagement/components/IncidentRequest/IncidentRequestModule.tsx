@@ -10,8 +10,10 @@ import {
   DefaultButton,
   MessageBar,
   MessageBarType,
+  Panel,
+  PanelType,
 } from '@fluentui/react';
-import { Card, ICardTokens } from '@uifabric/react-cards';
+
 import styles from './IncidentRequestModule.module.scss';
 import { IInventoryManagementProps } from '../../models/IInventoryManagementProps';
 import { IncidentService } from '../../services/IncidentService';
@@ -20,6 +22,8 @@ interface IIncidentRequestModuleProps extends IInventoryManagementProps {
   employeeId?: string;
   department?: string;
   setIsLoading: (loading: boolean) => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 interface IIncidentForm {
@@ -61,8 +65,6 @@ const priorityOptions: IDropdownOption[] = [
 const raisedToOptions: IDropdownOption[] = [
   { key: 'Admin', text: 'Admin' }
 ];
-
-const cardTokens: ICardTokens = { childrenMargin: 12 };
 
 export const IncidentRequestModule: React.FC<IIncidentRequestModuleProps> = (props) => {
   const [formData, setFormData] = useState<IIncidentForm>({
@@ -176,6 +178,7 @@ export const IncidentRequestModule: React.FC<IIncidentRequestModuleProps> = (pro
         setMessage(null);
         // Refresh assigned assets in case it changes
         loadAssignedAssetsForName(props.userDisplayName);
+        props.onClose();
       }, 2000);
     } catch (error) {
       console.error('Error submitting incident:', error);
@@ -202,6 +205,7 @@ export const IncidentRequestModule: React.FC<IIncidentRequestModuleProps> = (pro
       assignedDate: '',
     });
     setMessage(null);
+    props.onClose();
   };
 
   const assetOptions: IDropdownOption[] = assignedAssets.map(a => ({
@@ -212,146 +216,129 @@ export const IncidentRequestModule: React.FC<IIncidentRequestModuleProps> = (pro
   const selectedAssetKey = assignedAssets.find(a => a.serialNumber === formData.serialNo && a.assetName === formData.assetName)?.id;
 
   return (
-    <div className={styles.incidentRequestModule}>
-      <Stack tokens={{ childrenGap: 20 }}>
-        <Text variant="xLarge" block style={{ fontWeight: 600 }}>
-          Raise Incident
-        </Text>
+    <Panel
+      isOpen={props.isOpen}
+      onDismiss={props.onClose}
+      type={PanelType.medium}
+      headerText="Raise Incident"
+      closeButtonAriaLabel="Close"
+    >
+      <div className={styles.incidentRequestModule}>
+        <Stack tokens={{ childrenGap: 15 }}>
+          {message && (
+            <MessageBar messageBarType={message.type} isMultiline>
+              {message.text}
+            </MessageBar>
+          )}
 
-        {message && (
-          <MessageBar messageBarType={message.type} isMultiline>
-            {message.text}
-          </MessageBar>
-        )}
+          {!isLoadingAssets && assignedAssets.length === 0 && (
+            <MessageBar messageBarType={MessageBarType.info}>
+              You currently have no assets assigned. You can still raise generic incidents.
+            </MessageBar>
+          )}
 
-        {!isLoadingAssets && assignedAssets.length === 0 && (
-          <MessageBar messageBarType={MessageBarType.info}>
-            You currently have no assets assigned. You can still raise generic incidents.
-          </MessageBar>
-        )}
+          <TextField 
+            label="Employee Name" 
+            value={formData.employeeName} 
+            onChange={(ev, val) => handleInputChange('employeeName', val || '')}
+            required
+          />
 
-        <Card>
-          <Card.Section tokens={cardTokens}>
-            <Stack tokens={{ childrenGap: 15 }}>
-              <Stack tokens={{ childrenGap: 10 }}>
-                <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
-                  Employee Information
-                </Text>
-                <TextField 
-                  label="Employee Name *" 
-                  value={formData.employeeName} 
-                  onChange={(ev, val) => handleInputChange('employeeName', val || '')}
-                  required
-                />
-              </Stack>
+          <Dropdown
+            label="Select Assigned Asset"
+            placeholder={isLoadingAssets ? "Loading assets..." : "Choose one of your assigned assets"}
+            options={assetOptions}
+            selectedKey={selectedAssetKey}
+            onChange={(ev, option) => {
+              const selected = assignedAssets.find(a => a.id === option?.key);
+              if (selected) {
+                handleInputChange('assetName', selected.assetName);
+                handleInputChange('serialNo', selected.serialNumber);
+                handleInputChange('assignedDate', selected.assignmentDate);
+              } else {
+                handleInputChange('assetName', '');
+                handleInputChange('serialNo', '');
+                handleInputChange('assignedDate', '');
+              }
+            }}
+            disabled={isLoadingAssets}
+          />
 
-              <Stack tokens={{ childrenGap: 10 }}>
-                <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
-                  Asset Details
-                </Text>
+          {formData.assetName && (
+            <TextField
+              label="Asset Name"
+              value={formData.assetName}
+              disabled
+            />
+          )}
 
-                <Dropdown
-                  label="Select Assigned Asset"
-                  placeholder={isLoadingAssets ? "Loading assets..." : "Choose one of your assigned assets"}
-                  options={assetOptions}
-                  selectedKey={selectedAssetKey}
-                  onChange={(ev, option) => {
-                    const selected = assignedAssets.find(a => a.id === option?.key);
-                    if (selected) {
-                      handleInputChange('assetName', selected.assetName);
-                      handleInputChange('serialNo', selected.serialNumber);
-                      handleInputChange('assignedDate', selected.assignmentDate);
-                    } else {
-                      handleInputChange('assetName', '');
-                      handleInputChange('serialNo', '');
-                      handleInputChange('assignedDate', '');
-                    }
-                  }}
-                  disabled={isLoadingAssets}
-                />
+          {formData.serialNo && (
+            <TextField
+              label="Serial NO"
+              value={formData.serialNo}
+              disabled
+            />
+          )}
 
-                {formData.assetName && (
-                  <TextField
-                    label="Asset Name"
-                    value={formData.assetName}
-                    disabled
-                  />
-                )}
+          <Dropdown
+            label="Incident Type"
+            options={incidentTypeOptions}
+            selectedKey={formData.incidentType}
+            onChange={(ev, option) => handleInputChange('incidentType', option?.key)}
+            required
+            placeholder="Select Incident Type"
+          />
 
-                {formData.serialNo && (
-                  <TextField
-                    label="Serial NO"
-                    value={formData.serialNo}
-                    disabled
-                  />
-                )}
+          <Dropdown
+            label="Priority"
+            options={priorityOptions}
+            selectedKey={formData.priority}
+            onChange={(ev, option) => handleInputChange('priority', option?.key)}
+          />
 
-                <Dropdown
-                  label="Incident Type *"
-                  options={incidentTypeOptions}
-                  selectedKey={formData.incidentType}
-                  onChange={(ev, option) => handleInputChange('incidentType', option?.key)}
-                  required
-                  placeholder="Select Incident Type"
-                />
+          <TextField
+            label="Description"
+            multiline
+            rows={5}
+            placeholder="Describe the issue..."
+            value={formData.description}
+            onChange={(ev, newValue) => handleInputChange('description', newValue)}
+            required
+          />
 
-                <Dropdown
-                  label="Priority"
-                  options={priorityOptions}
-                  selectedKey={formData.priority}
-                  onChange={(ev, option) => handleInputChange('priority', option?.key)}
-                />
+          <Dropdown
+            label="Raised To"
+            options={raisedToOptions}
+            selectedKey={formData.raisedTo}
+            onChange={(ev, option) => handleInputChange('raisedTo', option?.key)}
+            placeholder="Select Team"
+          />
 
-                <TextField
-                  label="Description *"
-                  multiline
-                  rows={5}
-                  placeholder="Describe the issue..."
-                  value={formData.description}
-                  onChange={(ev, newValue) => handleInputChange('description', newValue)}
-                  required
-                />
+          <TextField
+            label="Raised Date"
+            value={formData.raisedDate}
+            readOnly
+          />
 
-                <Dropdown
-                  label="Raised To"
-                  options={raisedToOptions}
-                  selectedKey={formData.raisedTo}
-                  onChange={(ev, option) => handleInputChange('raisedTo', option?.key)}
-                  placeholder="Select Team"
-                />
-              </Stack>
+          <TextField
+            label="Status"
+            value={formData.status}
+            readOnly
+          />
 
-              <Stack tokens={{ childrenGap: 10 }}>
-                <Text variant="large" style={{ fontWeight: 600, color: '#e74c3c' }}>
-                  Timeline & Status
-                </Text>
-                <TextField
-                  label="Raised Date"
-                  value={formData.raisedDate}
-                  readOnly
-                />
-                <TextField
-                  label="Status"
-                  value={formData.status}
-                  readOnly
-                />
-              </Stack>
-
-              <Stack horizontal tokens={{ childrenGap: 10 }}>
-                <PrimaryButton
-                  text="Report Incident"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting}
-                />
-                <DefaultButton
-                  text="Cancel"
-                  onClick={handleCancel}
-                />
-              </Stack>
-            </Stack>
-          </Card.Section>
-        </Card>
-      </Stack>
-    </div>
+          <Stack horizontal tokens={{ childrenGap: 10 }} style={{ marginTop: 20 }}>
+            <PrimaryButton
+              text="Report Incident"
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            />
+            <DefaultButton
+              text="Cancel"
+              onClick={handleCancel}
+            />
+          </Stack>
+        </Stack>
+      </div>
+    </Panel>
   );
 };

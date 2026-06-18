@@ -12,12 +12,11 @@ import {
   Dropdown,
   IDropdownOption,
   PrimaryButton,
-  Dialog,
-  DialogType,
-  DialogFooter,
   TextField,
+  Panel,
+  PanelType,
 } from '@fluentui/react';
-import { Card, ICardTokens } from '@uifabric/react-cards';
+import { jsPDF } from 'jspdf';
 import styles from './IncidentHistory.module.scss';
 import { IInventoryManagementProps } from '../../models/IInventoryManagementProps';
 import { IncidentService } from '../../services/IncidentService';
@@ -37,22 +36,62 @@ interface IIncidentHistoryItem {
   resolution?: string;
 }
 
-const cardTokens: ICardTokens = { childrenMargin: 12 };
-
-const statusBadgeStyles: { [key: string]: { backgroundColor: string; color: string } } = {
-  Open: { backgroundColor: '#e74c3c', color: '#fff' },
-  'In Progress': { backgroundColor: '#f39c12', color: '#fff' },
-  Resolved: { backgroundColor: '#27ae60', color: '#fff' },
-  Closed: { backgroundColor: '#666', color: '#fff' },
-};
-
-export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoading: (loading: boolean) => void }> = (props) => {
+export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoading: (loading: boolean) => void; userRole?: string; }> = (props) => {
   const [incidents, setIncidents] = useState<IIncidentHistoryItem[]>([]);
   const [filteredIncidents, setFilteredIncidents] = useState<IIncidentHistoryItem[]>([]);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<IIncidentHistoryItem | null>(null);
-  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [showDetailPanel, setShowDetailPanel] = useState(false);
+  const [tempResolution, setTempResolution] = useState('');
+
+  const getPriorityBadgeStyle = (priority?: string) => {
+    const p = priority || 'Medium';
+    let backgroundColor = '#f3f4f6';
+    let color = '#4b5563';
+    if (p === 'High' || p === 'Critical') {
+      backgroundColor = '#fee2e2';
+      color = '#b91c1c';
+    } else if (p === 'Low') {
+      backgroundColor = '#dbeafe';
+      color = '#1e3a8a';
+    }
+    return {
+      backgroundColor,
+      color,
+      padding: '4px 10px',
+      borderRadius: '9999px',
+      fontSize: '0.75rem',
+      fontWeight: 600 as const,
+      display: 'inline-block'
+    };
+  };
+
+  const getStatusBadgeStyle = (status?: string) => {
+    const s = status || 'Open';
+    let backgroundColor = '#fee2e2';
+    let color = '#991b1b';
+    if (s === 'In Progress') {
+      backgroundColor = '#fef3c7';
+      color = '#92400e';
+    } else if (s === 'Resolved') {
+      backgroundColor = '#dcfce7';
+      color = '#166534';
+    } else if (s === 'Closed') {
+      backgroundColor = '#f3f4f6';
+      color = '#4b5563';
+    }
+    return {
+      backgroundColor,
+      color,
+      padding: '4px 12px',
+      borderRadius: '9999px',
+      fontSize: '0.75rem',
+      fontWeight: 600 as const,
+      display: 'inline-block',
+      textAlign: 'center' as const
+    };
+  };
 
   useEffect(() => {
     loadIncidents();
@@ -66,7 +105,8 @@ export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoadin
     try {
       props.setIsLoading(true);
       const service = new IncidentService(props.spContext);
-      const data = await service.getEmployeeIncidentHistory(props.userEmail);
+      const isAdmin = props.userRole === 'Admin';
+      const data = await service.getEmployeeIncidentHistory(props.userEmail, isAdmin);
       setIncidents(data);
     } catch (error) {
       console.error('Error loading incident history:', error);
@@ -81,9 +121,9 @@ export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoadin
     if (searchText) {
       filtered = filtered.filter(
         (incident) =>
-          incident.assetName.toLowerCase().includes(searchText.toLowerCase()) ||
-          incident.issueType.toLowerCase().includes(searchText.toLowerCase()) ||
-          incident.incidentId.toLowerCase().includes(searchText.toLowerCase())
+          (incident.assetName || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          (incident.issueType || '').toLowerCase().includes(searchText.toLowerCase()) ||
+          (incident.incidentId || '').toLowerCase().includes(searchText.toLowerCase())
       );
     }
 
@@ -96,112 +136,276 @@ export const IncidentHistory: React.FC<IInventoryManagementProps & { setIsLoadin
 
   const handleViewDetails = (item: IIncidentHistoryItem) => {
     setSelectedIncident(item);
-    setShowDetailDialog(true);
+    setTempResolution(item.resolution || '');
+    setShowDetailPanel(true);
+  };
+
+  const handleStatusChange = async (incident: IIncidentHistoryItem, newStatus: string) => {
+    try {
+      props.setIsLoading(true);
+      const service = new IncidentService(props.spContext);
+      await service.updateIncidentStatus(incident.id, newStatus, incident.resolution);
+      
+      const updatedIncident = {
+        ...incident,
+        status: newStatus,
+        resolvedDate: newStatus === 'Resolved' || newStatus === 'Closed' ? new Date().toISOString() : incident.resolvedDate
+      };
+      setSelectedIncident(updatedIncident);
+      await loadIncidents();
+    } catch (error) {
+      console.error('Error updating status:', error);
+    } finally {
+      props.setIsLoading(false);
+    }
+  };
+
+  const handleSaveResolution = async (incident: IIncidentHistoryItem) => {
+    try {
+      props.setIsLoading(true);
+      const service = new IncidentService(props.spContext);
+      await service.updateIncidentStatus(incident.id, incident.status, tempResolution);
+      
+      const updatedIncident = {
+        ...incident,
+        resolution: tempResolution
+      };
+      setSelectedIncident(updatedIncident);
+      await loadIncidents();
+    } catch (error) {
+      console.error('Error saving resolution:', error);
+    } finally {
+      props.setIsLoading(false);
+    }
   };
 
   const handleDownloadReport = (incident: IIncidentHistoryItem) => {
-    const report = `
-Incident Report
-==========================
-Incident ID: ${incident.incidentId}
-Asset: ${incident.assetName}
-Issue Type: ${incident.issueType}
-Priority: ${incident.priority}
-Status: ${incident.status}
-Reported Date: ${new Date(incident.reportedDate).toLocaleString()}
-${incident.resolvedDate ? `Resolved Date: ${new Date(incident.resolvedDate).toLocaleString()}` : ''}
-${incident.assignedTo ? `Assigned To: ${incident.assignedTo}` : ''}
-
-Issue Description:
-${incident.issueDescription}
-
-${incident.resolution ? `Resolution:\n${incident.resolution}` : ''}
-
-Generated: ${new Date().toLocaleString()}
-    `;
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(report));
-    element.setAttribute('download', `incident-${incident.incidentId}.txt`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    try {
+      const doc = new jsPDF();
+      
+      // Top header banner
+      doc.setFillColor(0, 90, 158); // #005a9e (Deep blue theme color)
+      doc.rect(0, 0, 210, 25, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("MSFT INVENTORY MANAGEMENT", 14, 16);
+      
+      // Document Title
+      doc.setTextColor(51, 65, 85); // Slate 700
+      doc.setFontSize(14);
+      doc.text("INCIDENT REPORT", 14, 38);
+      
+      // Metadata
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 44);
+      
+      // Separator line
+      doc.setDrawColor(226, 232, 240); // Slate 200
+      doc.line(14, 48, 196, 48);
+      
+      // Specifications Section Title
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text("INCIDENT SPECIFICATIONS", 14, 58);
+      
+      // Render Specifications Key-Value grid
+      let y = 68;
+      const printField = (label: string, value: string) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139); // Slate 500
+        doc.text(label, 14, y);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(15, 23, 42); // Slate 900
+        doc.text(value, 55, y);
+        y += 8;
+      };
+      
+      printField("Incident ID:", incident.incidentId);
+      printField("Asset Name:", incident.assetName);
+      printField("Issue Type:", incident.issueType);
+      printField("Priority:", incident.priority || "Medium");
+      printField("Current Status:", incident.status || "Open");
+      printField("Reported Date:", new Date(incident.reportedDate).toLocaleString());
+      
+      if (incident.assignedTo) {
+        printField("Assigned To:", incident.assignedTo);
+      }
+      if (incident.resolvedDate) {
+        printField("Resolved Date:", new Date(incident.resolvedDate).toLocaleString());
+      }
+      
+      // Issue Description Title
+      y += 4;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(51, 65, 85);
+      doc.text("ISSUE DESCRIPTION", 14, y);
+      y += 6;
+      
+      // Issue Description Box
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(51, 65, 85);
+      
+      const splitDesc = doc.splitTextToSize(incident.issueDescription || "No description provided.", 170);
+      const descHeight = splitDesc.length * 6 + 10;
+      
+      // Draw background box
+      doc.setFillColor(248, 250, 252); // slate 50
+      doc.setDrawColor(226, 232, 240); // slate 200
+      doc.rect(14, y, 182, descHeight, 'FD');
+      
+      // Draw left accent bar
+      doc.setFillColor(100, 116, 139); // slate 500
+      doc.rect(14, y, 3, descHeight, 'F');
+      
+      // Draw text
+      let textY = y + 8;
+      splitDesc.forEach((line: string) => {
+        doc.text(line, 22, textY);
+        textY += 6;
+      });
+      
+      y += descHeight + 10;
+      
+      // Resolution Details (if resolved/closed)
+      if (incident.resolution) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(51, 65, 85);
+        doc.text("RESOLUTION SUMMARY", 14, y);
+        y += 6;
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(22, 101, 52); // green 800
+        
+        const splitRes = doc.splitTextToSize(incident.resolution, 170);
+        const resHeight = splitRes.length * 6 + 10;
+        
+        // Draw green background box
+        doc.setFillColor(240, 253, 244); // green 50
+        doc.setDrawColor(220, 252, 231); // green 200
+        doc.rect(14, y, 182, resHeight, 'FD');
+        
+        // Draw green left accent bar
+        doc.setFillColor(22, 101, 52); // green 800
+        doc.rect(14, y, 3, resHeight, 'F');
+        
+        // Draw resolution text
+        let resTextY = y + 8;
+        splitRes.forEach((line: string) => {
+          doc.text(line, 22, resTextY);
+          resTextY += 6;
+        });
+      }
+      
+      doc.save(`incident-${incident.incidentId}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF report:', error);
+    }
   };
 
   const columns: IColumn[] = [
     {
       key: 'incidentId',
       name: 'Incident ID',
-      minWidth: 100,
+      fieldName: 'incidentId',
+      minWidth: 90,
+      maxWidth: 120,
+      isResizable: true,
       onRender: (item: IIncidentHistoryItem) => <Text>{item.incidentId}</Text>,
     },
     {
       key: 'assetName',
       name: 'Asset',
-      minWidth: 120,
+      fieldName: 'assetName',
+      minWidth: 100,
+      maxWidth: 150,
+      isResizable: true,
       onRender: (item: IIncidentHistoryItem) => <Text>{item.assetName}</Text>,
     },
     {
       key: 'issueType',
       name: 'Issue Type',
-      minWidth: 120,
+      fieldName: 'issueType',
+      minWidth: 100,
+      maxWidth: 130,
+      isResizable: true,
       onRender: (item: IIncidentHistoryItem) => <Text>{item.issueType}</Text>,
     },
     {
       key: 'priority',
       name: 'Priority',
-      minWidth: 100,
-      onRender: (item: IIncidentHistoryItem) => (
-        <Text style={{ fontWeight: 600, color: item.priority === 'Critical' ? '#e74c3c' : item.priority === 'High' ? '#f39c12' : '#0078d4' }}>
-          {item.priority}
-        </Text>
-      ),
+      fieldName: 'priority',
+      minWidth: 80,
+      maxWidth: 100,
+      isResizable: true,
+      onRender: (item: IIncidentHistoryItem) => {
+        return (
+          <span style={getPriorityBadgeStyle(item.priority)}>
+            {item.priority || 'Medium'}
+          </span>
+        );
+      },
     },
     {
       key: 'status',
       name: 'Status',
-      minWidth: 120,
-      onRender: (item: IIncidentHistoryItem) => (
-        <div
-          style={{
-            ...statusBadgeStyles[item.status],
-            padding: '6px 12px',
-            borderRadius: '4px',
-            textAlign: 'center',
-            fontWeight: 600,
-            fontSize: '12px',
-          }}
-        >
-          {item.status}
-        </div>
-      ),
+      fieldName: 'status',
+      minWidth: 90,
+      maxWidth: 120,
+      isResizable: true,
+      onRender: (item: IIncidentHistoryItem) => {
+        return (
+          <span style={getStatusBadgeStyle(item.status)}>
+            {item.status || 'Open'}
+          </span>
+        );
+      },
     },
     {
       key: 'reportedDate',
       name: 'Reported',
-      minWidth: 120,
-      onRender: (item: IIncidentHistoryItem) => (
-        <Text>{new Date(item.reportedDate).toLocaleDateString()}</Text>
-      ),
+      fieldName: 'reportedDate',
+      minWidth: 90,
+      maxWidth: 120,
+      isResizable: true,
+      onRender: (item: IIncidentHistoryItem) => {
+        if (!item.reportedDate) return <Text>-</Text>;
+        try {
+          return <Text>{new Date(item.reportedDate).toLocaleDateString()}</Text>;
+        } catch {
+          return <Text>{item.reportedDate}</Text>;
+        }
+      },
     },
     {
       key: 'actions',
       name: 'Actions',
-      minWidth: 150,
+      minWidth: 160,
+      maxWidth: 220,
+      isResizable: true,
       onRender: (item: IIncidentHistoryItem) => (
-        <Stack horizontal tokens={{ childrenGap: 10 }}>
+        <Stack horizontal tokens={{ childrenGap: 8 }}>
           <PrimaryButton
             text="View"
             onClick={() => handleViewDetails(item)}
             styles={{
-              root: { padding: '4px 12px', fontSize: '12px', height: '24px' },
+              root: { padding: '2px 10px', fontSize: '11px', height: '24px' },
             }}
           />
           <PrimaryButton
             text="Download"
             onClick={() => handleDownloadReport(item)}
             styles={{
-              root: { padding: '4px 12px', fontSize: '12px', height: '24px' },
+              root: { padding: '2px 10px', fontSize: '11px', height: '24px' },
             }}
           />
         </Stack>
@@ -218,113 +422,174 @@ Generated: ${new Date().toLocaleString()}
   ];
 
   return (
-    <div className={styles.incidentHistory}>
-      <Stack tokens={{ childrenGap: 20 }}>
-        <Text variant="xLarge" block style={{ fontWeight: 600 }}>
-          Incident History
+    <div style={{ marginTop: '20px' }}>
+      <Stack tokens={{ childrenGap: 15 }}>
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '5px' }}>
+          <SearchBox
+            placeholder="Search by incident ID, asset name, or issue type..."
+            value={searchText}
+            onChange={(ev, newValue) => setSearchText(newValue || '')}
+            onClear={() => setSearchText('')}
+            styles={{ root: { width: '100%', maxWidth: 400 } }}
+          />
+          <Dropdown
+            placeholder="Filter by status"
+            options={statusFilterOptions}
+            onChange={(ev, option) => setStatusFilter(option?.key as string | null || null)}
+            styles={{ root: { width: 200 } }}
+          />
+        </div>
+
+        {/* Items Count */}
+        <Text variant="small" style={{ color: 'var(--text-muted, #6b7280)', display: 'block' }}>
+          Showing {filteredIncidents.length} of {incidents.length} incidents
         </Text>
 
-        <Card>
-          <Card.Section tokens={cardTokens}>
-            <Stack tokens={{ childrenGap: 15 }}>
-              {/* Filters */}
-              <Stack horizontal tokens={{ childrenGap: 15 }} wrap>
-                <SearchBox
-                  placeholder="Search by incident ID, asset name, or issue type..."
-                  value={searchText}
-                  onChange={(ev, newValue) => setSearchText(newValue || '')}
-                  style={{ flex: 1, minWidth: '250px' }}
-                />
-                <Dropdown
-                  placeholder="Filter by status"
-                  options={statusFilterOptions}
-                  onChange={(ev, option) => setStatusFilter(option?.key as string | null)}
-                  style={{ width: '200px' }}
-                />
-              </Stack>
-
-              {/* Items Count */}
-              <Text variant="small" style={{ color: '#666' }}>
-                Showing {filteredIncidents.length} of {incidents.length} incidents
-              </Text>
-
-              {/* Details List */}
-              {filteredIncidents.length > 0 ? (
-                <DetailsList
-                  items={filteredIncidents}
-                  columns={columns}
-                  setKey="set-items"
-                  layoutMode={DetailsListLayoutMode.justified}
-                  selectionMode={SelectionMode.none}
-                />
-              ) : (
-                <Stack horizontalAlign="center" verticalAlign="center" style={{ minHeight: '300px' }}>
-                  <Icon iconName="ClearFilter" style={{ fontSize: '48px', color: '#ccc', marginBottom: '10px' }} />
-                  <Text variant="large" style={{ color: '#666' }}>
-                    No incidents found.
-                  </Text>
-                </Stack>
-              )}
-            </Stack>
-          </Card.Section>
-        </Card>
-
-        {/* Detail Dialog */}
-        <Dialog
-          hidden={!showDetailDialog}
-          onDismiss={() => setShowDetailDialog(false)}
-          dialogContentProps={{
-            type: DialogType.normal,
-            title: 'Incident Details',
-            closeButtonAriaLabel: 'Close',
-          }}
-          minWidth={600}
-        >
-          {selectedIncident && (
-            <Stack tokens={{ childrenGap: 15 }}>
-              <TextField label="Incident ID" value={selectedIncident.incidentId} disabled />
-              <TextField label="Asset Name" value={selectedIncident.assetName} disabled />
-              <TextField label="Issue Type" value={selectedIncident.issueType} disabled />
-              <TextField label="Priority" value={selectedIncident.priority} disabled />
-              <TextField label="Status" value={selectedIncident.status} disabled />
-              <TextField
-                label="Issue Description"
-                value={selectedIncident.issueDescription}
-                multiline
-                rows={4}
-                disabled
-              />
-              {selectedIncident.resolution && (
-                <TextField
-                  label="Resolution"
-                  value={selectedIncident.resolution}
-                  multiline
-                  rows={4}
-                  disabled
-                />
-              )}
-              <TextField
-                label="Reported Date"
-                value={new Date(selectedIncident.reportedDate).toLocaleString()}
-                disabled
-              />
-              {selectedIncident.resolvedDate && (
-                <TextField
-                  label="Resolved Date"
-                  value={new Date(selectedIncident.resolvedDate).toLocaleString()}
-                  disabled
-                />
-              )}
-              {selectedIncident.assignedTo && (
-                <TextField label="Assigned To" value={selectedIncident.assignedTo} disabled />
-              )}
-            </Stack>
-          )}
-          <DialogFooter>
-            <PrimaryButton text="Close" onClick={() => setShowDetailDialog(false)} />
-          </DialogFooter>
-        </Dialog>
+        {/* Details List */}
+        {filteredIncidents.length > 0 ? (
+          <DetailsList
+            items={filteredIncidents}
+            columns={columns}
+            setKey="incident-list"
+            layoutMode={DetailsListLayoutMode.justified}
+            selectionMode={SelectionMode.none}
+          />
+        ) : (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '250px',
+            border: '1px dashed #e5e7eb',
+            borderRadius: '8px',
+            padding: '30px'
+          }}>
+            <Icon iconName="ClearFilter" style={{ fontSize: '36px', color: '#9ca3af', marginBottom: '10px' }} />
+            <Text variant="medium" style={{ color: '#6b7280' }}>
+              No incidents found.
+            </Text>
+          </div>
+        )}
       </Stack>
+
+      {/* Detail Panel */}
+      <Panel
+        isOpen={showDetailPanel}
+        onDismiss={() => setShowDetailPanel(false)}
+        type={PanelType.medium}
+        headerText="Incident Details"
+        closeButtonAriaLabel="Close"
+      >
+        {selectedIncident && (
+          <div style={{ marginTop: '10px' }}>
+            <p style={{ color: '#6b7280', fontSize: '0.88rem', margin: '0 0 20px 0' }}>
+              <strong>Reported:</strong> {new Date(selectedIncident.reportedDate).toLocaleString()}
+            </p>
+
+            <div style={{ padding: '12px 15px', backgroundColor: '#f1f5f9', borderRadius: '6px', marginBottom: '20px', borderLeft: '4px solid #64748b' }}>
+              <p style={{ margin: 0, fontSize: '0.92rem', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                {selectedIncident.issueDescription}
+              </p>
+            </div>
+
+            <div style={{ backgroundColor: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '20px' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#111827', fontSize: '1rem', borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                Incident Specifications
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.88rem', alignItems: 'center' }}>
+                <div><span style={{ color: '#6b7280' }}>Incident ID:</span> <strong style={{ color: '#111827' }}>{selectedIncident.incidentId}</strong></div>
+                <div><span style={{ color: '#6b7280' }}>Asset Name:</span> <strong style={{ color: '#111827' }}>{selectedIncident.assetName}</strong></div>
+                <div><span style={{ color: '#6b7280' }}>Issue Type:</span> <strong style={{ color: '#111827' }}>{selectedIncident.issueType}</strong></div>
+                
+                <div>
+                  <span style={{ color: '#6b7280', marginRight: '6px' }}>Priority:</span>
+                  <span style={getPriorityBadgeStyle(selectedIncident.priority)}>
+                    {selectedIncident.priority || 'Medium'}
+                  </span>
+                </div>
+                
+                {props.userRole === 'Admin' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ color: '#6b7280' }}>Status:</span>
+                    <Dropdown
+                      selectedKey={selectedIncident.status || 'Open'}
+                      options={[
+                        { key: 'Open', text: 'Open' },
+                        { key: 'In Progress', text: 'In Progress' },
+                        { key: 'Resolved', text: 'Resolved' },
+                        { key: 'Closed', text: 'Closed' }
+                      ]}
+                      onChange={(ev, option) => handleStatusChange(selectedIncident, option?.key as string)}
+                      styles={{ root: { width: 120 } }}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <span style={{ color: '#6b7280', marginRight: '6px' }}>Status:</span>
+                    <span style={getStatusBadgeStyle(selectedIncident.status)}>
+                      {selectedIncident.status || 'Open'}
+                    </span>
+                  </div>
+                )}
+
+                {selectedIncident.assignedTo && (
+                  <div><span style={{ color: '#6b7280' }}>Assigned To:</span> <strong style={{ color: '#111827' }}>{selectedIncident.assignedTo}</strong></div>
+                )}
+              </div>
+            </div>
+
+            {props.userRole === 'Admin' && (selectedIncident.status === 'Resolved' || selectedIncident.status === 'Closed') ? (
+              <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#1e293b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Icon iconName="CheckMark" style={{ color: '#166534', fontWeight: 'bold' }} /> Update Resolution Details
+                </h4>
+                <Stack tokens={{ childrenGap: 10 }}>
+                  {selectedIncident.resolvedDate && (
+                    <div style={{ fontSize: '0.88rem' }}>
+                      <span style={{ color: '#6b7280' }}>Resolved Date:</span>{' '}
+                      <strong style={{ color: '#111827' }}>{new Date(selectedIncident.resolvedDate).toLocaleString()}</strong>
+                    </div>
+                  )}
+                  <TextField
+                    label="Resolution Summary"
+                    multiline
+                    rows={3}
+                    value={tempResolution}
+                    onChange={(ev, newValue) => setTempResolution(newValue || '')}
+                    placeholder="Describe how this issue was resolved..."
+                  />
+                  <PrimaryButton
+                    text="Save Resolution"
+                    onClick={() => handleSaveResolution(selectedIncident)}
+                    styles={{ root: { alignSelf: 'flex-start' } }}
+                  />
+                </Stack>
+              </div>
+            ) : (
+              selectedIncident.resolution && (
+                <div style={{ backgroundColor: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#1e293b', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Icon iconName="CheckMark" style={{ color: '#166534', fontWeight: 'bold' }} /> Resolution Details
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem' }}>
+                    {selectedIncident.resolvedDate && (
+                      <div>
+                        <span style={{ color: '#6b7280' }}>Resolved Date:</span>{' '}
+                        <strong style={{ color: '#111827' }}>{new Date(selectedIncident.resolvedDate).toLocaleString()}</strong>
+                      </div>
+                    )}
+                    <div style={{ padding: '10px', backgroundColor: '#f0fdf4', borderRadius: '6px', border: '1px solid #dcfce7', color: '#166534', fontSize: '0.88rem', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
+                      <strong>Resolution Summary:</strong> {selectedIncident.resolution}
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </Panel>
     </div>
   );
 };
