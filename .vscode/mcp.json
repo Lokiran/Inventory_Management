@@ -1,0 +1,17 @@
+{
+	"servers": {
+		"com.figma.mcp/mcp": {
+			"type": "http",
+			"url": "https://mcp.figma.com/mcp",
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.0.3"
+		},
+		"com.qualityclouds/mcp-server-qualityclouds": {
+			"type": "http",
+			"url": "https://mcp.qualityclouds.com/mcp",
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.0.2"
+		}
+	},
+	"inputs": []
+}

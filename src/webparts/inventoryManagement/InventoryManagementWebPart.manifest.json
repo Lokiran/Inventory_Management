@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "56f8f2dc-8391-46cb-b74c-2806d6953063",
+  "alias": "InventoryManagementWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "supportedHosts": ["SharePointWebPart"],
+  "supportsThemeVariants": true,
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+    "group": { "default": "Advanced" },
+    "title": { "default": "Inventory Management" },
+    "description": { "default": "Inventory Management system for asset tracking" },
+    "officeFabricIconFontName": "Page",
+    "properties": {
+      "description": "Inventory Management"
+    }
+  }]
+}
